@@ -1,0 +1,80 @@
+# Production stack for a VPS: database, API, storefront and TLS.
+#
+#   make prod DOMAIN=example.com ACME_EMAIL=you@example.com
+#
+# Caddy obtains and renews the Let's Encrypt certificate on its own, so the only
+# prerequisites are an A record for DOMAIN pointing at this host and ports
+# 80/443 open. The crawler is not part of this stack — it runs separately and
+# fills the same database.
+
+services:
+  # Optional. The stack serves the SQLite catalogue that ships with the repo by
+  # default; start Postgres only when you run the crawler against this host:
+  #     docker compose -f docker-compose.prod.yml --profile postgres up -d
+  #     DATABASE_URL=postgresql://... make prod
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-guazi}"
+      POSTGRES_USER: "${POSTGRES_USER:-guazi}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-}"
+      TZ: "UTC"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-guazi} -d ${POSTGRES_DB:-guazi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    # not published: only the API reaches it, over the compose network
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: cargo-auto-api:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "${DATABASE_URL:-sqlite:///data/cargo-auto.db}"
+      MEDIA_DIR: "/app/data/images"
+      MEDIA_BASE_URL: "${MEDIA_BASE_URL:-/media}"
+      FRONTEND_DIR: "/app/frontend"
+      USD_RUB_RATE: "${USD_RUB_RATE:-0}"
+      CORS_ORIGINS: "${CORS_ORIGINS:-*}"
+      TZ: "UTC"
+    volumes:
+      - ./data:/app/data:ro
+      - ./web:/app/frontend:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=5).status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: "${DOMAIN:-}"
+      ACME_EMAIL: "${ACME_EMAIL:-}"
+      ACME_CA_DIRECTIVE: "${ACME_CA_DIRECTIVE:-}"
+    volumes:
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates and ACME account keys live here
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

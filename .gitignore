@@ -1,2 +1,14 @@
-.DS_Store
+# Secrets: real credentials live here, .env.example documents the shape
+.env
+.env.*
+!.env.example
+
+# Crawl output. The catalogue that ships with the repo is data/cargo-auto.db;
+# photos live in object storage and everything else is regenerable.
+data/*
+!data/cargo-auto.db
+
+.venv/
+__pycache__/
+*.pyc
 *.log

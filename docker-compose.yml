@@ -1,0 +1,82 @@
+x-parser-base: &parser-base
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: guazi-parser:latest
+  # Chromium needs far more shared memory than the 64MB default
+  shm_size: 2gb
+  init: true
+  ports:
+    - "${VNC_PORT:-6080}:6080"   # noVNC: watch and drive the live browser
+  environment:
+    DATABASE_URL: "postgresql://${POSTGRES_USER:-guazi}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-guazi}"
+    SCHEMA_FILE: "/app/db/schema.sql"
+    TARGET_CARS: "${TARGET_CARS:-150}"
+    CITY: "${CITY:-bin}"
+    BASE_URL: "${BASE_URL:-https://en.guazi.com}"
+    HEADLESS: "${HEADLESS:-0}"
+    ENABLE_VNC: "${ENABLE_VNC:-1}"
+    DOWNLOAD_IMAGES: "${DOWNLOAD_IMAGES:-1}"
+    MAX_IMAGES_PER_CAR: "${MAX_IMAGES_PER_CAR:-40}"
+    CONCURRENCY: "${CONCURRENCY:-4}"
+    REQUEST_DELAY: "${REQUEST_DELAY:-2.5}"
+    HUMAN_WAIT: "${HUMAN_WAIT:-900}"
+    START_URL: "${START_URL:-https://en.guazi.com/bin/}"
+    TZ: "UTC"
+    # S3-compatible storage for the photos (Yandex Object Storage)
+    AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+    AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+    AWS_REGION: "${AWS_REGION:-ru-central1}"
+    AWS_ENDPOINT_URL: "${AWS_ENDPOINT_URL:-}"
+    S3_BUCKET: "${S3_BUCKET:-}"
+    S3_PREFIX: "${S3_PREFIX:-guazi/images}"
+    S3_CONCURRENCY: "${S3_CONCURRENCY:-8}"
+  volumes:
+    - ./data:/app/data
+    - ./parser:/app/parser:ro
+    - ./tools:/app/tools:ro
+    - ./db:/app/db:ro
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # ---- storage -------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-guazi}"
+      POSTGRES_USER: "${POSTGRES_USER:-guazi}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      TZ: "UTC"
+    ports:
+      - "${PG_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # applied on first boot; the parser re-applies it idempotently too
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-guazi} -d ${POSTGRES_DB:-guazi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ---- crawler -------------------------------------------------------------
+  # Parse cars into ./data and Postgres
+  parser:
+    <<: *parser-base
+
+  # One-time interactive session: you clear the site's human check (and sign in
+  # if you want) in the noVNC window; cookies persist in ./data/profile
+  login:
+    <<: *parser-base
+    command: ["python", "-m", "parser.main", "login"]
+
+  # Structure probe — dumps HTML, link shapes and network calls to ./data/recon
+  recon:
+    <<: *parser-base
+    command: ["python", "-m", "tools.recon"]
+
+volumes:
+  pgdata:

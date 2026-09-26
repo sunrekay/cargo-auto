@@ -180,3 +180,15 @@
  .brand-grid{gap:8px}.brand-tile{padding:20px 6px 14px;min-height:134px}.brand-tile img{width:64px;height:32px}.brand-tile strong{font-size:13px}.model-grid{gap:10px}.model-photo{height:115px}.model-info{padding:12px}.model-info strong{font-size:17px}.model-info b{font-size:14px;white-space:nowrap}.model-info small{font-size:10px}.model-check{width:24px;height:24px;right:7px;top:7px}.picker-footer{padding:14px 20px max(16px,env(safe-area-inset-bottom))}.picker-footer .primary{flex:1;min-width:0}.picker-footer .filter-actions{gap:24px}#filter-form{flex:1}.picker-scroll{flex:1}
 }
 @media(max-width:360px){.picker-heading,.picker-scroll{padding-left:16px;padding-right:16px}.brand-tile img{width:56px}.brand-tile strong{font-size:12px}.model-info{padding:10px}.model-info strong{font-size:15px}.model-info b{font-size:12px}.model-photo{height:100px}.picker-heading .eyebrow{font-size:8px}}
+
+/* Most makes in the live catalogue have no bundled logo file; the tile falls
+   back to the make's initial so the grid stays even. */
+.brand-initial{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
+  background:var(--surface-2,#1b1b1f);color:var(--text,#fff);font-weight:700;font-size:20px;
+  line-height:1;text-transform:uppercase}
+
+/* Photo strip inside the detail dialog */
+.detail-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin:12px 0}
+.detail-photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px}
+#detail-content details{margin:8px 0 16px}
+#detail-content summary{cursor:pointer;padding:8px 0;font-weight:600}
