@@ -1,0 +1,62 @@
+[
+  {
+    "pageid": 76904455,
+    "ns": 0,
+    "title": "Li L6",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e3/%28CHN-Shanghai%29_Showcar_Li_L6_No-plate_2024-11-24.jpg/1280px-%28CHN-Shanghai%29_Showcar_Li_L6_No-plate_2024-11-24.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "width": 1000,
+      "height": 563
+    },
+    "pageimage": "(CHN-Shanghai)_Showcar_Li_L6_No-plate_2024-11-24.jpg"
+  },
+  {
+    "pageid": 71270321,
+    "ns": 0,
+    "title": "Li L9",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b6/Li_Auto_L9_IMG001.jpg/1280px-Li_Auto_L9_IMG001.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "width": 1000,
+      "height": 750
+    },
+    "pageimage": "Li_Auto_L9_IMG001.jpg"
+  },
+  {
+    "pageid": 79930193,
+    "ns": 0,
+    "title": "Xiaomi SU7 Ultra"
+  },
+  {
+    "pageid": 77428490,
+    "ns": 0,
+    "title": "Xiaomi YU7",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/1/13/Xiaomi_YU7_Emerald_Green_Metallic_01.jpg/1280px-Xiaomi_YU7_Emerald_Green_Metallic_01.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "width": 1000,
+      "height": 563
+    },
+    "pageimage": "Xiaomi_YU7_Emerald_Green_Metallic_01.jpg"
+  },
+  {
+    "pageid": 75278753,
+    "ns": 0,
+    "title": "Zeekr 007",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/0/07/Zeekr_007_006_%28cropped%29.jpg/1280px-Zeekr_007_006_%28cropped%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "width": 1000,
+      "height": 563
+    },
+    "pageimage": "Zeekr_007_006_(cropped).jpg"
+  },
+  {
+    "pageid": 73538970,
+    "ns": 0,
+    "title": "Zeekr X",
+    "thumbnail": {
+      "source": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/2023_Zeekr_X_%28front%29.jpg/1280px-2023_Zeekr_X_%28front%29.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+      "width": 1000,
+      "height": 618
+    },
+    "pageimage": "2023_Zeekr_X_(front).jpg"
+  }
+]
