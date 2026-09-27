@@ -23,7 +23,8 @@ CAR_COLUMNS = """
     c.price_currency, c.mileage_km, c.power, c.fuel_type, c.body_type, c.engine,
     c.transmission, c.drive_type, c.colour, c.seats, c.image_count, c.url,
     c.condition, c.vin, c.emission_standard, c.owners, c.scraped_at,
-    c.brand_slug, c.model_slug, c.body_slug
+    c.brand_slug, c.model_slug, c.body_slug,
+    (select count(*) from car_specs s where s.car_id = c.id) as spec_count
 """
 
 ORDER_BY = {

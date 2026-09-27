@@ -187,3 +187,56 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
 .match-app .price-origin{color:#9fb0a0;font-size:10px;line-height:1.2}
 @media(max-width:360px){.match-app .price{font-size:22px;padding:6px 12px}}
 @media(min-height:481px) and (max-height:600px){.match-app .price{font-size:21px;padding:5px 11px}}
+
+/* Figures, not pills: value first and large, label quiet underneath, hairlines
+   between. Reads in one pass instead of four separate objects. */
+.match-app .spec-row{
+ display:grid;grid-auto-flow:column;grid-auto-columns:1fr;
+ margin:15px 0 0;
+}
+.match-app .spec-row>div{
+ position:relative;padding-left:13px;
+}
+.match-app .spec-row>div:first-child{padding-left:0}
+.match-app .spec-row>div+div:before{
+ content:'';position:absolute;left:0;top:3px;bottom:3px;width:1px;background:#ffffff1f;
+}
+.match-app .spec-row b{
+ display:block;font-size:21px;font-weight:650;letter-spacing:-.6px;line-height:1.1;
+ color:#f2f6ee;font-variant-numeric:tabular-nums;
+}
+.match-app .spec-row span{
+ display:block;margin-top:3px;font-size:9px;letter-spacing:1.3px;
+ text-transform:uppercase;color:#93a394;
+}
+
+/* The inspection is the thing these listings have that a phone snapshot on a
+   classifieds site does not — a grade on a fixed scale and a measured report.
+   Shown where the card has the height for it. */
+.match-app .inspection{display:none}
+@media(min-height:761px){
+ .match-app .inspection{
+  display:flex;align-items:center;gap:13px;
+  margin:17px 0 0;padding-top:15px;border-top:1px solid #ffffff1a;
+ }
+}
+.match-app .grade-scale{display:flex;gap:4px;flex:0 0 auto}
+.match-app .grade-scale span{
+ display:grid;place-items:center;width:25px;height:25px;border-radius:8px;
+ font-size:12px;font-weight:650;line-height:1;
+ color:#7d8d7e;background:#ffffff0a;border:1px solid #ffffff14;
+}
+.match-app .grade-scale span.on{
+ color:#1b2a1c;background:#d5f78a;border-color:#d5f78a;
+ box-shadow:0 4px 14px #d5f78a33;transform:scale(1.08);
+}
+.match-app .inspection p{margin:0;font-size:11px;line-height:1.45;color:#aebaad}
+.match-app .inspection p span{
+ display:block;font-size:9px;letter-spacing:1.3px;text-transform:uppercase;color:#7f8f80;
+}
+.match-app .inspection p b{color:#e8f6d4;font-weight:650}
+
+@media(max-width:360px){
+ .match-app .spec-row b{font-size:18px}
+ .match-app .grade-scale span{width:22px;height:22px;font-size:11px}
+}

@@ -26,7 +26,41 @@ function openSavedCar(id){
  dialog.focus({preventScroll:true});
 }
 function garageMarkup(list){return `<section class="garage-collection" aria-label="Сохранённые автомобили"><div class="garage-heading"><h1>Мой гараж</h1><span>${list.length} авто</span></div><div class="garage-grid">${list.map(c=>`<article class="garage-card"><button class="garage-open" data-car-open="${c.id}" aria-label="Открыть ${escapeHTML(carTitle(c))}"><div class="garage-photo"><img src="${escapeHTML(c.image)}" alt="${escapeHTML(carTitle(c))}" loading="lazy"><span>${c.year||'—'}</span></div><div class="garage-info"><h2>${escapeHTML(carTitle(c))}</h2><p>${escapeHTML(c.km||'—')} · ${escapeHTML(c.fuel||'—')}</p><strong>${money(c.price)}</strong><small>Стоимость в Китае*</small></div></button><button class="garage-remove" data-save="${c.id}" aria-label="Убрать ${escapeHTML(carTitle(c))} из гаража">${iconHeart}</button></article>`).join('')}</div></section>`;}
-function cardMarkup(c){return `<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button></div><div class="car-body"><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${c.year||'—'} / КИТАЙ</span><h3>${escapeHTML(carTitle(c))}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div><div class="quick-specs"><span>${escapeHTML(c.fuel||'—')}</span><span>${c.km||'—'}</span><span>${c.power||'—'}</span><span>${c.drive||c.transmission||'—'}</span></div></div></article>`;}
+const GRADES=['S','A','B','C','D'];
+const numberFmt=new Intl.NumberFormat('ru-RU');
+
+// Figures set as figures — a large value over a quiet label — instead of a row
+// of pills. The same four facts, read at a glance rather than deciphered.
+function specRow(c){
+ const cells=[
+  [c.year,'год'],
+  [c.mileage_km!=null?numberFmt.format(c.mileage_km):null,'км'],
+  [c.power_ps,'л.с.'],
+  [c.drive||c.transmission,'привод'],
+ ].filter(([v])=>v!=null&&v!=='');
+ return `<div class="spec-row">${cells.map(([v,l])=>
+  `<div><b>${escapeHTML(String(v))}</b><span>${l}</span></div>`).join('')}</div>`;
+}
+
+// What sets these listings apart is that every car has been through Guazi's
+// inspection: a grade on the S-D scale and a report running to well over a
+// hundred measured characteristics. Worth showing, where the card has room.
+function inspection(c){
+ if(!c.grade&&!c.spec_count)return '';
+ const scale=c.grade?`<div class="grade-scale" role="img"
+   aria-label="Оценка состояния ${escapeHTML(c.grade)} по шкале ${GRADES.join(' ')}">`
+   +GRADES.map(g=>`<span class="${g===c.grade?'on':''}">${g}</span>`).join('')+`</div>`:'';
+ const count=c.spec_count
+  ? `<b>${c.spec_count}</b> ${plural(c.spec_count,'характеристика','характеристики','характеристик')} в отчёте`
+  : 'отчёт об осмотре';
+ return `<div class="inspection">${scale}
+  <p><span>Осмотр Guazi</span>${count}</p></div>`;
+}
+
+const plural=(n,one,few,many)=>{const a=Math.abs(n)%100,b=a%10;
+ return a>10&&a<20?many:b>1&&b<5?few:b===1?one:many;};
+
+function cardMarkup(c){return `<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button></div><div class="car-body"><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${escapeHTML(c.fuel||'—')} / КИТАЙ</span><h3>${escapeHTML(carTitle(c))}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div>${specRow(c)}${inspection(c)}</div></article>`;}
 function render(){
  const list=eligible();activeIndex=Math.max(0,Math.min(activeIndex,Math.max(0,list.length-1)));const c=list[activeIndex];
  document.querySelectorAll('[data-view]').forEach(x=>{const on=x.dataset.view===view;x.setAttribute('aria-pressed',String(on));x.classList.toggle('active',on)});

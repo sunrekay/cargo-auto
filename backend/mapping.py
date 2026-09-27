@@ -123,6 +123,9 @@ def car_summary(row: dict, media_base: str) -> dict:
         "drive": row.get("drive_type"),
         "colour": row.get("colour"),
         "seats": row.get("seats"),
+        # the source's own inspection grade, and how much of a report it has
+        "grade": (row.get("condition") or "").strip() or None,
+        "spec_count": row.get("spec_count"),
         "price_usd": usd,
         "price": money_rub(usd),
         "image": photo_url(row.get("file_path"), row.get("s3_url"), media_base),
