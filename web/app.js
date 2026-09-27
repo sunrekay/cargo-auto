@@ -401,6 +401,7 @@ function paintGallery(direction=0){
  const image=document.querySelector('#photo-image');transitionPhoto(image,photo.url,photo.alt||galleryName,direction,()=>{
  document.querySelector('#photo-caption').textContent=`${galleryName} · ${galleryIndex+1} / ${galleryPhotos.length}`;
  });
+ paintGalleryThumbs();
 }
 async function openGallery(id,index=0){
  const token=++galleryRequest,c=cars.find(c=>c.id===id);if(!c)return;
@@ -413,6 +414,37 @@ async function openGallery(id,index=0){
   if(photos.length){galleryPhotos=photos;galleryIndex=((index%photos.length)+photos.length)%photos.length;paintGallery();}
  }catch{document.querySelector('#photo-caption').textContent=c.name+' · Остальные фото не загрузились';}
 }
+// Thumbnails along the foot of the viewer: 26-odd angles per car, so jumping
+// to the interior or the engine bay beats stepping through one at a time. The
+// strip is built once per gallery and afterwards only re-marks the active one.
+const thumbStrip=document.querySelector('#photo-thumbs');
+let thumbsBuiltFor=null;
+function paintGalleryThumbs(){
+ if(!thumbStrip)return;
+ if(galleryPhotos.length<2){thumbStrip.innerHTML='';thumbsBuiltFor=null;return;}
+ if(thumbsBuiltFor!==galleryPhotos){
+  thumbStrip.innerHTML=galleryPhotos.map((p,i)=>
+   `<button class="photo-thumb" data-gallery-index="${i}" aria-label="${escapeHTML(p.alt||('Фото '+(i+1)))}">`
+   +`<img src="${p.thumb||p.url}" alt="" loading="lazy" decoding="async"></button>`).join('');
+  thumbsBuiltFor=galleryPhotos;
+ }
+ const buttons=thumbStrip.children;
+ for(let i=0;i<buttons.length;i++){
+  const on=i===galleryIndex;
+  buttons[i].classList.toggle('on',on);
+  buttons[i].setAttribute('aria-current',on?'true':'false');
+  if(on)buttons[i].scrollIntoView({inline:'center',block:'nearest',
+   behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+ }
+}
+thumbStrip?.addEventListener('click',e=>{
+ const button=e.target.closest('[data-gallery-index]');
+ if(!button)return;
+ const next=Number(button.dataset.galleryIndex);
+ const direction=Math.sign(next-galleryIndex);
+ galleryIndex=next;
+ paintGallery(direction);
+});
 function movePhoto(delta){galleryIndex=(galleryIndex+delta+galleryPhotos.length)%galleryPhotos.length;paintGallery(Math.sign(delta));}
 document.addEventListener('click',e=>{const button=e.target.closest('[data-gallery]');if(button)openGallery(button.dataset.gallery,Number(button.dataset.index));});
 photoDialog.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();movePhoto(e.key==='ArrowRight'?1:-1);}});

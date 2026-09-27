@@ -87,7 +87,7 @@ def count_cars(where: str) -> str:
 GET_CAR = f"select {CAR_COLUMNS}, {FIRST_PHOTO} from cars c where c.listing_id = :id"
 
 GET_PHOTOS = """
-select position, url, s3_url, file_path, alt, kind, bytes
+select position, url, source_url, s3_url, file_path, alt, kind, bytes
 from car_images
 where car_id = (select id from cars where listing_id = :id) and downloaded = 1
 order by position

@@ -111,6 +111,9 @@ async def get_car(listing_id: str):
         "position": p["position"],
         "url": mapping.photo_url(p["file_path"], p["s3_url"], MEDIA_BASE),
         "source_url": p["url"],
+        # the page's own smaller rendition, for thumbnail strips: a fifth of
+        # the bytes of the full-resolution copy
+        "thumb": p["source_url"] or mapping.photo_url(p["file_path"], p["s3_url"], MEDIA_BASE),
         "alt": p["alt"],
         "kind": p["kind"],
     } for p in photos]
