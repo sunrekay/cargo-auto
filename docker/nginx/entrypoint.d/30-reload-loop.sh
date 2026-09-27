@@ -1,12 +1,13 @@
 #!/bin/sh
-# Pick up a certificate renewed by certbot without restarting the container.
-# Runs in the background: the entrypoint execs nginx after these scripts, and
-# this loop keeps running alongside it.
 set -e
 (
+    previous=$(readlink /etc/nginx/public/current)
     while :; do
-        sleep 6h
-        nginx -s reload 2>/dev/null || true
+        sleep 60
+        current=$(readlink /etc/nginx/public/current)
+        if [ "$current" != "$previous" ]; then
+            if nginx -t && nginx -s reload; then previous=$current; fi
+        fi
     done
 ) &
-echo "[nginx] certificate reload loop started (every 6h)"
+echo "[nginx] watching published certificates (every 60s)"

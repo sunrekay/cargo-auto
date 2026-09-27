@@ -126,7 +126,7 @@ csv: ## Rebuild CSV from cars.json without re-parsing
 prod: ## Deploy: preflight -> build -> healthy services -> TLS -> public verification
 	@bash scripts/prod-start.sh
 
-update: ## Fast-forward the checkout, then deploy (as in genmail_server)
+update: ## Fast-forward the checkout, then deploy
 	git pull --ff-only
 	git submodule update --init --recursive
 	@$(MAKE) prod
@@ -196,12 +196,11 @@ prod-cert-reset: ## Delete every certificate for DOMAIN (after a staging rehears
 	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
 	@$(PROD) run --rm -v ./scripts:/scripts:ro --entrypoint sh certbot \
 		/scripts/cert-reset.sh $(DOMAIN)
-	@$(PROD) restart nginx >/dev/null 2>&1 || true
-	@echo "  nginx is back on its placeholder until you issue again"
+	@echo "  ACME state reset; published pair retained until successful issuance"
 
 prod-cert: ## Show the certificate currently installed
 	@$(PROD) exec -T nginx sh -c \
-		'openssl x509 -in "/etc/letsencrypt/live/$$DOMAIN/fullchain.pem" -noout -subject -issuer -dates'
+		'openssl x509 -in "/etc/nginx/public/current/fullchain.pem" -noout -subject -issuer -dates'
 
 
 clean: ## Remove the image and containers

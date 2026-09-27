@@ -16,7 +16,7 @@ class DeploymentTests(unittest.TestCase):
         self.env = dict(os.environ, DOMAIN='cars.example.com', ACME_EMAIL='ops@example.com',
                         STAGING='0', DATABASE_URL='sqlite:///data/cargo-auto.db',
                         PATH=str(self.bin)+':'+os.environ['PATH'], LOG=str(self.log))
-        self.tool('docker', 'echo "docker $*" >> "$LOG"\ncase "$*" in *"-issuer"*) exit 1;; esac\n')
+        self.tool('docker', 'echo "docker $*" >> "$LOG"\ncase "$*" in *"certificate.py state"*) echo missing;; esac\n')
         self.tool('make', 'echo "make $*" >> "$LOG"\ncase "$*" in *"${FAIL_TARGET:-NEVER}"*) exit 7;; esac\n')
         self.tool('curl', 'echo "curl $*" >> "$LOG"\nexit "${CURL_STATUS:-0}"\n')
         self.tool('sleep', ':\n')
@@ -39,7 +39,7 @@ class DeploymentTests(unittest.TestCase):
         r = self.run_script('prod-start.sh')
         self.assertEqual(r.returncode, 0, r.stderr)
         calls = self.calls()
-        steps = ['prod-init', 'build api nginx', '--wait --wait-timeout', 'prod-cert-issue',
+        steps = ['prod-init', 'build api nginx certbot', 'prod-cert-issue', '--wait --wait-timeout',
                  'up -d certbot', 'prod-verify']
         offsets = [calls.index(x) for x in steps]
         self.assertEqual(offsets, sorted(offsets))
@@ -74,15 +74,56 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotEqual(self.run_script('prod-check.sh', DATABASE_URL='sqlite:///data/missing.db').returncode, 0)
         self.assertEqual(self.calls(), '')
 
-    def test_certbot_failure_does_not_restart_nginx(self):
-        self.tool('docker', 'echo "docker $*" >> "$LOG"\ncase "$*" in *"-issuer"*) exit 1;; *certonly*) exit 9;; esac\n')
-        self.assertNotEqual(self.run_script('prod-cert.sh').returncode, 0)
-        self.assertNotIn('restart nginx', self.calls())
+    def test_certbot_failure_restores_running_services(self):
+        self.tool('docker', '''echo "docker $*" >> "$LOG"
+case "$*" in
+ *"certificate.py state"*) echo missing;;
+ *"ps --status running"*) echo running-id;;
+ *certonly*) exit 9;;
+esac
+''')
+        r = self.run_script('prod-cert.sh')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('start nginx', self.calls())
+        self.assertIn('start certbot', self.calls())
+        self.assertNotIn('certificate.py publish', self.calls())
 
     def test_staging_cannot_replace_production_cert(self):
-        self.tool('docker', 'echo "docker $*" >> "$LOG"\necho "issuer=Lets Encrypt"\n')
+        self.tool('docker', 'echo "docker $*" >> "$LOG"\ncase "$*" in *"certificate.py state"*) echo production;; esac\n')
         self.assertNotEqual(self.run_script('prod-cert.sh', STAGING='1').returncode, 0)
         self.assertNotIn('certonly', self.calls())
+        self.assertNotIn('stop certbot', self.calls())
+
+    def test_tls_error_is_visible_and_not_retried(self):
+        self.tool('curl', 'echo "curl $*" >> "$LOG"\necho "SSL certificate problem: self signed certificate" >&2\nexit 60\n')
+        r = self.run_script('prod-verify.sh')
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn('self signed certificate', r.stderr)
+        self.assertEqual(self.calls().count('curl '), 1)
+
+    def test_first_issue_stops_proxy_then_publishes(self):
+        r = self.run_script('prod-cert.sh')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        calls = self.calls()
+        steps = ['stop certbot nginx', 'certificate.py prepare', '-p 80:80', '--standalone', 'certificate.py publish']
+        positions = [calls.index(x) for x in steps]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_valid_certificate_reused_without_downtime(self):
+        self.tool('docker', 'echo "docker $*" >> "$LOG"\ncase "$*" in *"certificate.py state"*) echo production;; esac\n')
+        r = self.run_script('prod-cert.sh')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('certificate.py ready', self.calls())
+        self.assertIn('certificate.py publish', self.calls())
+        self.assertNotIn('stop certbot', self.calls())
+        self.assertNotIn('certonly', self.calls())
+
+    def test_publish_failure_does_not_start_new_proxy(self):
+        self.tool('docker', '''echo "docker $*" >> "$LOG"
+case "$*" in *"certificate.py state"*) echo missing;; *"certificate.py publish"*) exit 8;; esac
+''')
+        self.assertNotEqual(self.run_script('prod-cert.sh').returncode, 0)
+        self.assertNotIn('up -d --no-deps nginx', self.calls())
 
 if __name__ == '__main__':
     unittest.main()

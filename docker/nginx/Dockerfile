@@ -1,6 +1,6 @@
 FROM nginx:1.29-alpine
 
-# openssl for the placeholder certificate, gettext for envsubst
+# openssl for certificate inspection, gettext for envsubst
 RUN apk add --no-cache openssl gettext
 
 COPY site.conf.template /etc/nginx/site.conf.template

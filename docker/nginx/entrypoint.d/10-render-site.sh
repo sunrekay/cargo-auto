@@ -11,21 +11,13 @@ CONF=/etc/nginx/conf.d/default.conf
 RESOLVER=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf 2>/dev/null)
 : "${RESOLVER:=127.0.0.11}"
 
-# The placeholder deliberately lives outside /etc/letsencrypt: a directory in
-# live/ makes certbot think a lineage already exists, and it then issues into
-# "<domain>-0001" which nginx would never read.
-REAL_CERT="/etc/letsencrypt/live/${DOMAIN}"
-PLACEHOLDER_CERT="/etc/nginx/ssl/${DOMAIN}"
-
-if [ -s "${REAL_CERT}/fullchain.pem" ]; then
-    CERT_DIR="${REAL_CERT}"
-    STAPLING="on"
-    echo "[nginx] using the certificate from ${REAL_CERT}"
-else
-    CERT_DIR="${PLACEHOLDER_CERT}"
-    STAPLING="off"    # a self-signed certificate has no issuer to staple
-    echo "[nginx] no certificate yet — using the placeholder"
-fi
+# A public certificate must be published before nginx starts.
+CERT_DIR=/etc/nginx/public/current
+[ -s "$CERT_DIR/fullchain.pem" ] && [ -s "$CERT_DIR/privkey.pem" ] || {
+    echo "[nginx] no published certificate; run make prod-cert-issue" >&2
+    exit 1
+}
+STAPLING=off
 
 export DOMAIN RESOLVER CERT_DIR STAPLING
 envsubst '${DOMAIN} ${RESOLVER} ${CERT_DIR} ${STAPLING}' \

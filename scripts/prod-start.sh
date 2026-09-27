@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ordered deployment, following genmail_server/scripts/prod-start.sh.
+# Ordered deployment of the API, storefront and TLS proxy.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 step() { printf '\n==> %s\n' "$*"; }
@@ -8,14 +8,14 @@ make_cmd="${MAKE:-make}"
 step '1/6 Preflight checks'
 "$make_cmd" --no-print-directory prod-init
 step '2/6 Build API and proxy'
-"$DOCKER" compose -f docker-compose.prod.yml build api nginx
-step '3/6 Start services and wait for the API'
+"$DOCKER" compose -f docker-compose.prod.yml build api nginx certbot
+step '3/6 Public certificate before nginx startup'
+PROD_DEPLOY=1 "$make_cmd" --no-print-directory prod-cert-issue
+step '4/6 Start services and wait for the API'
 if [[ ${DATABASE_URL:-} =~ @postgres(:5432)?/ ]]; then
   "$DOCKER" compose -f docker-compose.prod.yml --profile postgres up -d --wait --wait-timeout 180 postgres
 fi
 "$DOCKER" compose -f docker-compose.prod.yml up -d --wait --wait-timeout 180 api nginx
-step '4/6 Public certificate'
-"$make_cmd" --no-print-directory prod-cert-issue
 "$DOCKER" compose -f docker-compose.prod.yml up -d certbot
 step '5/6 Verify public routes'
 "$make_cmd" --no-print-directory prod-verify

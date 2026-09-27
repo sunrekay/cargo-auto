@@ -68,7 +68,7 @@ services:
     environment:
       DOMAIN: "${DOMAIN:-}"
     volumes:
-      - letsencrypt:/etc/letsencrypt
+      - public_tls:/etc/nginx/public:ro
       - certbot_webroot:/var/www/certbot
     depends_on:
       api:
@@ -76,17 +76,18 @@ services:
 
   # Renews in the background; issuance is a one-off, see `make prod-cert-issue`.
   certbot:
-    image: certbot/certbot:latest
+    build:
+      context: ./docker/certbot
+    image: cargo-auto-certbot:latest
     restart: unless-stopped
+    environment:
+      DOMAIN: "${DOMAIN:-}"
+      STAGING: "${STAGING:-0}"
     volumes:
       - letsencrypt:/etc/letsencrypt
+      - public_tls:/etc/nginx/public
       - certbot_webroot:/var/www/certbot
-    entrypoint: >
-      sh -c "trap exit TERM;
-             while :; do
-               certbot renew --webroot -w /var/www/certbot --quiet;
-               sleep 12h & wait $${!};
-             done"
+    entrypoint: ["sh", "/opt/renew.sh"]
     depends_on:
       - nginx
 
@@ -94,3 +95,4 @@ volumes:
   pgdata:
   letsencrypt:      # certificates and ACME account, survives redeploys
   certbot_webroot:  # HTTP-01 challenge files shared with nginx
+  public_tls:       # validated published pair, separate from Certbot state

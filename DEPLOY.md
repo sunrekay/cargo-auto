@@ -21,50 +21,46 @@ Encrypt certificate and renews it in the background.
 
 ## What `make prod` does
 
-The ordered `scripts/prod-start.sh` workflow follows the deployment approach in
-`genmail_server`, adapted to this project's API/nginx/certbot stack:
+The ordered `scripts/prod-start.sh` workflow deploys the API/nginx/certbot stack:
 
 1. Validate domain, email, Docker/Compose, curl, storefront and SQLite catalogue
    before any build. PostgreSQL URLs do not require a local SQLite file.
    Persist the effective domain/email in `.env`, validate Compose configuration,
    report port listeners and require DNS resolution (not a match to a local IP).
-2. Build only API and nginx images.
-3. Start API and nginx with `--wait --wait-timeout 180`. When DATABASE_URL points
-   to the Compose host `postgres`, start its profile and wait first; an existing
-   database is not reset. External PostgreSQL must already be reachable.
-4. Issue or renew the certificate with `--keep-until-expiring`. A certbot failure
-   stops deployment. Restart nginx to switch from its placeholder, validate its
-   configuration, then start the background renewal service.
-5. Request the public HTTPS routes `/api/health`, `/`, and `/api/cars` with normal
-   TLS validation. Any failed route makes the command fail instead of printing
-   a successful deployment. Each route gets up to 30 attempts (5s request timeout,
-   2s between attempts).
-6. Print the site and API addresses only after the checks pass.
+2. Build API, nginx and the certificate helper image.
+3. Validate an existing certificate (hostname, key match, expiry and trusted chain).
+   Reuse it if at least 30 days remain. Otherwise stop only this project's nginx
+   and renewal worker, and issue via Certbot standalone on port 80. Other host
+   services are never stopped automatically; port conflicts stop issuance.
+4. Publish the validated certificate/key into the separate `public_tls` volume,
+   switching one symlink for both files. Start API and nginx with
+   `--wait --wait-timeout 180`, then the renewal worker. Local PostgreSQL is started
+   first only when DATABASE_URL points to the Compose host `postgres`.
+5. Request public HTTPS `/api/health`, `/`, and `/api/cars` with normal TLS
+   validation. Failure is fatal; curl's reason is printed. No `--insecure` fallback.
+6. Print the site/API addresses after all checks pass.
 
-Like the reference project, `make update` runs `git pull --ff-only`, updates pinned
-submodules, then runs `make prod`. No automatic global Docker pruning is performed;
-other projects may share the Docker daemon. No internal PKI or application
-migrations are added: this stack uses the supplied catalogue and public TLS.
+`make update` fast-forwards the checkout, updates pinned submodules, and invokes
+`make prod`. No global Docker pruning is performed.
 
-### How the certificate is obtained
+### Certificate storage and first startup
 
-There is a chicken-and-egg problem: nginx will not start when `ssl_certificate`
-points at a missing file, but certbot cannot obtain a certificate until nginx is
-answering on port 80. The container breaks the circle by generating a
-short-lived self-signed placeholder at the same path, so nginx always starts and
-can answer the HTTP-01 challenge; certbot then overwrites it with the real
-certificate and nginx is reloaded.
+The `letsencrypt` volume is private Certbot state. The proxy reads only the
+validated pair from `public_tls:/etc/nginx/public/current`. No placeholder is
+created, and nginx refuses to start without a published certificate.
 
-That also means a failed issuance never takes the site down — it stays up on the
-placeholder, browsers warn, and `make prod-cert-issue` can be retried once DNS
-or the firewall is sorted out.
+Initial issuance does not depend on nginx: Certbot serves HTTP-01 itself on port
+80. A short interruption is expected when an existing stack needs standalone
+issuance; a valid reusable certificate avoids this stop. On failure the script
+attempts to start previously running containers again and exits with an error.
+Data volumes and old published certificate bundles are retained.
 
-Renewal runs every 12 hours in the certbot container, and nginx reloads every
-6 hours to pick up a renewed certificate.
+### Renewal
 
-Nothing in the sequence destroys data: the schema is `CREATE TABLE IF NOT EXISTS`
-throughout, and both the data and the certificate volumes persist across
-`make prod-down` and redeploys.
+The worker runs every 12 hours using `--webroot`, overriding standalone from
+initial issuance. A deploy hook validates and atomically publishes the new pair.
+Nginx watches the published symlink every 60 seconds; it tests configuration and
+reloads only after a successful change. The site stays online during renewal.
 
 ## Day to day
 
@@ -133,3 +129,17 @@ figure the storefront shows; at `0` the site displays the original USD prices.
 The rate is configuration and does not update itself — set it to whatever your
 pricing policy uses, and the API reports it in every response so the number is
 never opaque.
+
+## Public health check fails although the API is healthy
+
+An internal HTTP 200 does not prove public TLS is valid. `make prod-verify` prints
+the underlying curl error; certificate error 60 stops immediately. Inspect the
+published certificate with `make prod-cert`. Never use `curl -k` to mark a deploy ready.
+
+Older deployments may have a self-signed placeholder in
+`/etc/letsencrypt/live/<domain>`. `make prod-cert-issue` detects this by matching
+issuer and subject. Unmanaged placeholders are moved to
+`/etc/letsencrypt/legacy-backups/` before issuance, preserving the keys and
+certificate. Managed lineages and symlinks require explicit inspection/reset.
+After issuance, the script confirms that the mounted certificate was replaced
+before starting nginx. Then run `make prod-verify`.
