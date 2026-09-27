@@ -83,7 +83,7 @@ def count_cars(where: str) -> str:
     return f"select count(*) as total from cars c{where}"
 
 
-GET_CAR = f"select {CAR_COLUMNS}, {FIRST_PHOTO}, c.specs from cars c where c.listing_id = :id"
+GET_CAR = f"select {CAR_COLUMNS}, {FIRST_PHOTO} from cars c where c.listing_id = :id"
 
 GET_PHOTOS = """
 select position, url, s3_url, file_path, alt, kind, bytes

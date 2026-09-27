@@ -7,42 +7,80 @@ let filter='all',view='all';let criteria={brand:'all',model:'all',budget:'all',f
   ?new Intl.NumberFormat('ru-RU').format(n)+' ₽'
   :'$'+new Intl.NumberFormat('en-US').format(n));
 function notify(t){const el=document.querySelector('#toast');el.textContent=t;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2200)}
-let activeIndex=0,history=[],suppressPhotoUntil=0;
+let activeIndex=0,suppressPhotoUntil=0,animating=false;
+const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconHeart='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 5.5c-2.4-2.4-6-1.5-8.5 1-2.5-2.5-6.1-3.4-8.5-1C.1 8.9 3.5 13.8 12 20c8.5-6.2 11.9-11.1 8.5-14.5Z"/></svg>';
-function eligible(){return cars.filter(c=>view==='saved'?saved.has(c.id):matches(c,criteria));}
+function eligible(){return cars.filter(c=>matches(c,criteria)&&(view!=='saved'||saved.has(c.id)));}
 function persistSaved(){try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}}
 function render(){
  const list=eligible();activeIndex=Math.max(0,Math.min(activeIndex,Math.max(0,list.length-1)));const c=list[activeIndex];
  document.querySelectorAll('[data-view]').forEach(x=>{const on=x.dataset.view===view;x.setAttribute('aria-pressed',String(on));x.classList.toggle('active',on)});
  document.querySelector('#saved-count').textContent=cars.filter(c=>saved.has(c.id)).length;
- document.querySelector('#view-title').textContent=view==='saved'?'Те самые.':'Найдите свою.';
- document.querySelector('#feed-count').textContent=list.length?`${String(activeIndex+1).padStart(2,'0')} / ${list.length}`:'0 / 0';
- document.querySelector('#undo-car').disabled=!history.length;
- document.querySelector('#skip-car').disabled=!c||list.length<2;
- const like=document.querySelector('#like-car');like.disabled=!c;like.classList.toggle('is-saved',!!c&&saved.has(c.id));like.setAttribute('aria-label',c&&saved.has(c.id)?'Убрать из сохранённых':'Сохранить автомобиль');like.setAttribute('aria-pressed',String(!!c&&saved.has(c.id)));
- feed.innerHTML=c?`<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${c.image}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><div class="badges"><span class="badge dark">ИЗ КИТАЯ</span><span class="badge">${c.fuel||'Автомобиль'}</span></div><span class="swipe-stamp stamp-save">В сохранённые</span><span class="swipe-stamp stamp-skip">Дальше</span><button class="expand-photo" data-photo="${c.id}" aria-label="Открыть фото ${c.name} целиком"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button><span class="photo-label">${c.body_label||'Автомобиль'} · ${c.year||'—'}</span></div><div class="car-body"><div class="title-row"><div><h3>${c.name}</h3><p class="sub">${c.trim||''}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div><div class="quick-specs"><span>${c.km||'Пробег не указан'}</span><span>${c.power||'Мощность не указана'}</span><span>${c.year||'—'} г.</span></div><div class="price-row"><div><div class="price">${money(c.price)}</div><div class="price-note">${priceNote()}</div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div></div></article>`:`<div class="empty"><span class="empty-heart">♡</span><h2>${view==='saved'?'Здесь будут ваши фавориты':'Нет подходящих машин'}</h2><p>${view==='saved'?'Нажмите на сердце или смахните машину вправо. Сохранённые авто останутся здесь.':'Попробуйте изменить параметры подбора.'}</p><button class="primary" id="reset">${view==='saved'?'К подбору':'Сбросить фильтры'}</button></div>`;
+ document.body.classList.toggle('garage-view',view==='saved');
+ feed.innerHTML=c?`<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><span class="swipe-stamp stamp-save">В сохранённые</span><span class="swipe-stamp stamp-skip">Дальше</span><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button><span class="photo-label">${c.photo_count||1} фото · Смотреть</span></div><div class="car-body"><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${c.year||'—'} / КИТАЙ</span><h3>${escapeHTML(c.name)}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div><div class="quick-specs"><span>${escapeHTML(c.fuel||'—')}</span><span>${c.km||'—'}</span><span>${c.power||'—'}</span><span>${c.drive||c.transmission||'—'}</span></div><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div></div></article>`:`<div class="empty"><span class="empty-heart">♡</span><h2>${view==='saved'?'Гараж начинается с симпатии':'Нет подходящих машин'}</h2><p>${view==='saved'?'Смахните вправо то, что зацепило. Мы сохраним ваши находки здесь.':'Попробуйте изменить параметры подбора.'}</p><button class="primary" id="reset">${view==='saved'?'К подбору':'Сбросить фильтры'}</button></div>`;
+ restoreCardPhoto();
  updateFilters();
 }
-function decide(action){const list=eligible(),c=list[activeIndex];if(!c)return;
- history.push({id:c.id,index:activeIndex,view,wasSaved:saved.has(c.id)});if(history.length>50)history.shift();
- if(action==='like'){if(view==='saved'&&saved.has(c.id)){saved.delete(c.id);notify('Убрано из сохранённых')}else{saved.add(c.id);notify('Сохранено. Вернётесь к ней позже.')}persistSaved();}
- if(view==='all'||action==='skip')activeIndex=(activeIndex+1)%list.length;
+async function decide(action){
+ if(animating)return;
+ const list=eligible(),c=list[activeIndex];if(!c)return;
+ const currentView=view;
+ const card=feed.querySelector('.car');
+ const transform={like:'translateX(110%) rotate(12deg)',skip:'translateX(-110%) rotate(-12deg)',next:'translateY(-105%)',previous:'translateY(105%)'}[action];
+ if(card&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+  animating=true;
+  try{await card.animate([{transform:card.style.transform||'none',opacity:1},{transform,opacity:0}],{duration:210,easing:'ease-in'}).finished;}finally{animating=false;}
+ }
+ if(currentView!==view)return;
+ if(action==='like'){
+  if(view==='saved'){saved.delete(c.id);}else{saved.add(c.id);}
+  persistSaved();
+ }
+ if(!(view==='saved'&&action==='like'))activeIndex=(activeIndex+(action==='previous'?-1:1)+list.length)%list.length;
  render();
 }
-document.querySelector('#skip-car').addEventListener('click',()=>decide('skip'));
-document.querySelector('#like-car').addEventListener('click',()=>decide('like'));
-document.querySelector('#undo-car').addEventListener('click',()=>{const previous=history.pop();if(!previous)return;view=previous.view;previous.wasSaved?saved.add(previous.id):saved.delete(previous.id);persistSaved();activeIndex=Math.max(0,eligible().findIndex(c=>c.id===previous.id));render();notify('Последнее действие отменено')});
 let drag=null;
-feed.addEventListener('pointerdown',e=>{if(!e.isPrimary||e.button!==0||!e.target.closest('.visual')||e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,id:e.pointerId,card:e.target.closest('.car'),dx:0};});
-feed.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dx)<15){drag=null;return;}drag.dx=dx;if(Math.abs(dx)>12){feed.setPointerCapture(e.pointerId);drag.card.style.transform=`translateX(${dx*.65}px) rotate(${dx/35}deg)`;drag.card.classList.toggle('swiping-save',dx>0);drag.card.classList.toggle('swiping-skip',dx<0);}});
-function endDrag(e,cancelled=false){if(!drag||e.pointerId!==drag.id)return;const {card,dx}=drag;drag=null;card.style.transform='';card.classList.remove('swiping-save','swiping-skip');if(Math.abs(dx)>12)suppressPhotoUntil=Date.now()+400;if(!cancelled&&Math.abs(dx)>70)decide(dx>0?'like':'skip');}
-feed.addEventListener('pointerup',e=>endDrag(e));feed.addEventListener('pointercancel',e=>endDrag(e,true));
-document.addEventListener('click',e=>{const photo=e.target.closest('[data-photo]')|| (e.target.matches('.visual img')?e.target.closest('.car'):null);if(photo&&Date.now()>suppressPhotoUntil){const c=cars.find(c=>c.id===(photo.dataset.photo||photo.dataset.id));document.querySelector('#photo-image').src=c.image;document.querySelector('#photo-image').alt=c.name;document.querySelector('#photo-caption').textContent=c.name+' · Фото модели';document.querySelector('#photo-dialog').showModal();}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
+feed.addEventListener('pointerdown',e=>{
+ if(animating||!e.isPrimary||e.button!==0||!e.target.closest('.car')||(e.target.closest('button')&&!e.target.closest('.photo-zone')))return;
+ drag={x:e.clientX,y:e.clientY,id:e.pointerId,card:e.target.closest('.car'),dx:0,dy:0,axis:null};
+});
+feed.addEventListener('pointermove',e=>{
+ if(!drag||e.pointerId!==drag.id)return;
+ const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+ if(!drag.axis&&Math.max(Math.abs(dx),Math.abs(dy))>10){drag.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';feed.setPointerCapture(e.pointerId);}
+ drag.dx=dx;drag.dy=dy;
+ if(!drag.axis)return;
+ drag.card.style.transform=drag.axis==='x'?`translateX(${dx*.65}px) rotate(${dx/35}deg)`:`translateY(${dy*.65}px)`;
+ drag.card.classList.toggle('swiping-save',drag.axis==='x'&&dx>0);
+ drag.card.classList.toggle('swiping-skip',drag.axis==='x'&&dx<0);
+});
+function endDrag(e,cancelled=false){
+ if(!drag||e.pointerId!==drag.id)return;
+ const {card,dx,dy,axis}=drag;drag=null;
+ if(Math.max(Math.abs(dx),Math.abs(dy))>10)suppressPhotoUntil=Date.now()+450;
+ const distance=axis==='x'?dx:dy;
+ if(!cancelled&&axis&&Math.abs(distance)>55){decide(axis==='x'?(dx>0?'like':'skip'):(dy<0?'next':'previous'));}
+ else card.style.transform='';
+ card.classList.remove('swiping-save','swiping-skip');
+}
+feed.addEventListener('pointerup',e=>endDrag(e));
+feed.addEventListener('pointercancel',e=>endDrag(e,true));
+// Require a fresh wheel gesture after momentum stops, so trackpads don't skip several cars.
+let wheelTotal=0,wheelLocked=false,wheelTimer;
+feed.addEventListener('wheel',e=>{
+ if(e.ctrlKey||document.querySelector('dialog[open]'))return;
+ e.preventDefault();clearTimeout(wheelTimer);
+ wheelTimer=setTimeout(()=>{wheelTotal=0;wheelLocked=false;},180);
+ if(animating||wheelLocked)return;
+ wheelTotal+=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?feed.clientHeight:1);
+ if(Math.abs(wheelTotal)>45){wheelLocked=true;decide(wheelTotal>0?'next':'previous');}
+},{passive:false});
+document.addEventListener('click',e=>{const zone=e.target.closest('.photo-zone');if(zone&&Date.now()>suppressPhotoUntil&&!animating){const card=zone.closest('.car');if(zone.hasAttribute('data-photo-step'))stepCardPhoto(card,Number(zone.dataset.photoStep));else openGallery(card.dataset.id,cardPhotoIndices.get(card.dataset.id)||0);}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
 if(f){filter=f.dataset.filter;document.querySelectorAll('.chip').forEach(x=>(x.classList.toggle('selected',x===f),x.setAttribute('aria-pressed',String(x===f))));render()}
-if(v){view=v.dataset.view;activeIndex=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
+if(v&&!animating){view=v.dataset.view;activeIndex=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
 if(d){openDetail(d.dataset.detail)}
 if(e.target.closest('.close'))e.target.closest('dialog').close();if(e.target.id==='reset'){filter='all';view='all';criteria={brand:'all',model:'all',budget:'all',fuel:'all',body:'all'};document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('selected',x.dataset.filter==='all'));document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view==='all'));render()}});
-document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||e.target.matches('input,select,textarea')||!['ArrowLeft','ArrowRight'].includes(e.key))return;e.preventDefault();decide(e.key==='ArrowRight'?'like':'skip')});
+document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||e.target.matches('input,select,textarea')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();decide({ArrowRight:'like',ArrowLeft:'skip',ArrowUp:'previous',ArrowDown:'next'}[e.key])});
 const filterDialog=document.querySelector('#filters-dialog'),form=document.querySelector('#filter-form');
 function draft(){return {...criteria,...Object.fromEntries(new FormData(form))}}
 function updateFilters(){const count=Object.values(criteria).filter(v=>v!=='all').length;const badge=document.querySelector('#filter-count');badge.hidden=!count;badge.textContent=count;document.querySelector('#clear-filters').hidden=!count;document.querySelector('#brand-trigger').innerHTML=(criteria.brand==='all'?'Марка':(brandNames[criteria.brand]||criteria.brand))+' <span>⌄</span>';document.querySelector('#model-trigger').innerHTML=(criteria.model==='all'?'Модель':(modelNames[criteria.model]||criteria.model))+' <span>⌄</span>';}
@@ -53,7 +91,7 @@ function setStep(step){if(step==='models'&&form.elements.brand.value==='all')ste
 function renderPicker(){
  const q=draft(),search=document.querySelector('#brand-search').value.trim().toLowerCase();
  const list=brands.filter(b=>b.name.toLowerCase().includes(search));
- document.querySelector('#brand-grid').innerHTML=list.length?list.map(b=>{const b_initial=(b.name||'?')[0];return `<button type="button" class="brand-tile ${q.brand===b.id?'chosen':''}" data-brand="${b.id}" aria-pressed="${q.brand===b.id}"><img src="assets/${b.id}-logo.svg" alt="" data-initial="${b_initial}"><strong>${b.name}</strong><span>${cars.filter(c=>c.brand===b.id).length} авто</span><i aria-hidden="true">${q.brand===b.id?'✓':'↗'}</i></button>`}).join(''):'<p class="picker-note">Такой марки нет в подборке.</p>';
+ document.querySelector('#brand-grid').innerHTML=list.length?list.map(b=>{const b_initial=(b.name||'?')[0];return `<button type="button" class="brand-tile ${q.brand===b.id?'chosen':''}" data-brand="${b.id}" aria-pressed="${q.brand===b.id}">${['zeekr','li','xiaomi'].includes(b.id)?`<img src="assets/${b.id}-logo.svg" alt="" data-initial="${b_initial}">`:`<span class="brand-initial">${b_initial}</span>`}<strong>${b.name}</strong><span>${cars.filter(c=>c.brand===b.id).length} авто</span><i aria-hidden="true">${q.brand===b.id?'✓':'↗'}</i></button>`}).join(''):'<p class="picker-note">Такой марки нет в подборке.</p>';
 // Only a few makes ship a logo file; the rest fall back to the make's initial.
 document.querySelectorAll('#brand-grid img').forEach(img=>{
   const swap=()=>{const b=document.createElement('span');
@@ -72,7 +110,7 @@ form.addEventListener('click',e=>{const brand=e.target.closest('[data-brand]'),m
 document.querySelector('#brand-search').addEventListener('input',renderPicker);
 document.querySelector('#all-brands').addEventListener('click',()=>{form.elements.brand.value='all';form.elements.model.value='all';setStep('brands');renderPicker();});
 document.querySelector('#all-models').addEventListener('click',()=>{form.elements.model.value='all';renderPicker();});
-form.addEventListener('change',draftCount);form.addEventListener('submit',e=>{e.preventDefault();criteria=draft();activeIndex=0;history=[];filterDialog.close();render()});
+form.addEventListener('change',draftCount);form.addEventListener('submit',e=>{e.preventDefault();criteria=draft();activeIndex=0;filterDialog.close();render()});
 document.querySelector('#reset-draft').addEventListener('click',()=>{form.reset();form.elements.brand.value='all';form.elements.model.value='all';document.querySelector('#brand-search').value='';setStep('brands');renderPicker()});
 document.querySelector('#clear-filters').addEventListener('click',()=>{criteria={brand:'all',model:'all',budget:'all',fuel:'all',body:'all'};render()});
 
@@ -136,8 +174,8 @@ async function openDetail(id){
         ${rest.map(s=>`<div class="cost-line"><span>${s.label}</span><b>${s.value}</b></div>`).join('')}
       </details>
       <h3>Фотографии · ${car.photos.length}</h3>
-      <div class="detail-photos">${car.photos.slice(0,12).map(ph=>
-        `<img src="${ph.url}" alt="${ph.alt||car.name}" loading="lazy">`).join('')}</div>
+      <div class="detail-photos">${car.photos.map((ph,index)=>
+        `<button class="detail-photo" data-gallery="${car.id}" data-index="${index}" aria-label="Фото ${index+1}"><img src="${ph.url}" alt="${escapeHTML(ph.alt||car.name)}" loading="lazy"></button>`).join('')}</div>
       <p><a href="${car.source_url}" target="_blank" rel="noopener">Исходное объявление на Guazi ↗</a></p>`;
   }catch(err){
     console.error(err);
@@ -177,7 +215,107 @@ async function boot(){
   }catch(err){
     console.error(err);
     feed.innerHTML='<div class="empty"><h2>Каталог недоступен</h2>'+
-      '<p>Бэкенд не отвечает. Проверьте, что API запущен.</p></div>';
+      '<p>Не удалось загрузить автомобили. Попробуйте обновить страницу.</p></div>';
   }
 }
+// Gallery requests are cached; a request token prevents late responses replacing another car.
+const galleryCache=new Map(),galleryRequests=new Map(),cardPhotoIndices=new Map();
+async function loadGallery(id){
+ if(galleryCache.has(id))return galleryCache.get(id);
+ if(!galleryRequests.has(id))galleryRequests.set(id,api('/api/cars/'+encodeURIComponent(id)).then(car=>{galleryCache.set(id,car);return car;}).finally(()=>galleryRequests.delete(id)));
+ return galleryRequests.get(id);
+}
+// Decode before swapping to keep the previous photograph visible on slow networks.
+const photoTransitions=new WeakMap();
+async function transitionPhoto(img,url,alt,direction=0,onReady=()=>{}){
+ const previous=photoTransitions.get(img);
+ if(previous){previous.animations?.forEach(a=>a.cancel());previous.ghost?.remove();}
+ const state={url};photoTransitions.set(img,state);
+ try{const preload=new Image();preload.src=url;await preload.decode();}catch{if(photoTransitions.get(img)===state)photoTransitions.delete(img);return;}
+ if(photoTransitions.get(img)!==state||!img.isConnected)return;
+ const animate=direction&&img.getAttribute('src')!==url&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
+ let ghost;
+ if(animate){
+  ghost=img.cloneNode();ghost.removeAttribute('id');ghost.alt='';ghost.setAttribute('aria-hidden','true');
+  ghost.classList.add('photo-transition-ghost');
+  Object.assign(ghost.style,{position:'absolute',left:img.offsetLeft+'px',top:img.offsetTop+'px',width:img.offsetWidth+'px',height:img.offsetHeight+'px',margin:'0',pointerEvents:'none',zIndex:'1'});
+  img.after(ghost);state.ghost=ghost;
+ }
+ img.src=url;img.alt=alt;onReady();
+ if(!animate)return;
+ const timing={duration:440,easing:'cubic-bezier(.22,.75,.2,1)',fill:'none'};
+ const incoming=img.animate([{opacity:.15,transform:`translateX(${direction*24}px) scale(1.025)`},{opacity:1,transform:'translateX(0) scale(1)'}],timing);
+ const outgoing=ghost.animate([{opacity:1,transform:'translateX(0) scale(1)'},{opacity:0,transform:`translateX(${-direction*18}px) scale(.99)`}],timing);
+ state.animations=[incoming,outgoing];
+ await Promise.allSettled(state.animations.map(a=>a.finished));ghost.remove();
+}
+feed.addEventListener('pointerdown',e=>{const zone=e.target.closest('[data-photo-step]');if(!zone)return;
+ zone.blur();zone.animate([{opacity:0},{opacity:1,offset:.2},{opacity:0}],{duration:460,easing:'ease-out',pseudoElement:'::after'});
+});
+function paintCardPhoto(card,direction=0){
+ const id=card.dataset.id,photos=galleryCache.get(id)?.photos;
+ if(!photos?.length)return;
+ const index=((cardPhotoIndices.get(id)||0)%photos.length+photos.length)%photos.length;
+ cardPhotoIndices.set(id,index);
+ const visual=card.querySelector('.visual'),img=visual.querySelector('img');
+ transitionPhoto(img,photos[index].url,photos[index].alt||cars.find(c=>c.id===id)?.name||'Автомобиль',direction,()=>{
+ visual.style.setProperty('--car-image',`url("${photos[index].url.replace(/"/g,'%22')}")`);
+ visual.querySelector('.photo-label').textContent=`${index+1} / ${photos.length}`;
+ });
+ for(const offset of [-1,1]){const preload=new Image();preload.src=photos[(index+offset+photos.length)%photos.length].url;}
+}
+function restoreCardPhoto(){const card=feed.querySelector('.car');if(card)paintCardPhoto(card);}
+async function stepCardPhoto(card,delta){
+ const id=card.dataset.id;
+ // Record taps immediately so rapid taps retain their order while photos load.
+ cardPhotoIndices.set(id,(cardPhotoIndices.get(id)||0)+delta);
+ try{await loadGallery(id);if(card.isConnected)paintCardPhoto(card,Math.sign(delta));}
+ catch{cardPhotoIndices.delete(id);if(card.isConnected)notify('Не удалось загрузить фото. Попробуйте ещё раз.');}
+}
+let galleryPhotos=[],galleryIndex=0,galleryName='',galleryRequest=0;
+const photoDialog=document.querySelector('#photo-dialog');
+function paintGallery(direction=0){
+ const photo=galleryPhotos[galleryIndex];if(!photo)return;
+ const image=document.querySelector('#photo-image');transitionPhoto(image,photo.url,photo.alt||galleryName,direction,()=>{
+ document.querySelector('#photo-caption').textContent=`${galleryName} · ${galleryIndex+1} / ${galleryPhotos.length}`;
+ });
+}
+async function openGallery(id,index=0){
+ const token=++galleryRequest,c=cars.find(c=>c.id===id);if(!c)return;
+ galleryName=c.name;galleryPhotos=[{url:c.image}];galleryIndex=0;paintGallery();
+ if(!photoDialog.open)photoDialog.showModal();
+ try{
+  await loadGallery(id);
+  if(token!==galleryRequest||!photoDialog.open)return;
+  const photos=galleryCache.get(id).photos;
+  if(photos.length){galleryPhotos=photos;galleryIndex=((index%photos.length)+photos.length)%photos.length;paintGallery();}
+ }catch{document.querySelector('#photo-caption').textContent=c.name+' · Остальные фото не загрузились';}
+}
+function movePhoto(delta){galleryIndex=(galleryIndex+delta+galleryPhotos.length)%galleryPhotos.length;paintGallery(Math.sign(delta));}
+document.addEventListener('click',e=>{const button=e.target.closest('[data-gallery]');if(button)openGallery(button.dataset.gallery,Number(button.dataset.index));});
+photoDialog.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();movePhoto(e.key==='ArrowRight'?1:-1);}});
+let photoStart=null;
+photoDialog.addEventListener('pointerdown',e=>{
+ if(!e.isPrimary||e.target.closest('button'))return;
+ photoStart={x:e.clientX,y:e.clientY,id:e.pointerId};
+ photoDialog.setPointerCapture(e.pointerId);
+});
+photoDialog.addEventListener('pointerup',e=>{
+ if(!photoStart||e.pointerId!==photoStart.id)return;
+ const dx=e.clientX-photoStart.x,dy=e.clientY-photoStart.y;
+ photoStart=null;
+ if(Math.abs(dx)>45&&Math.abs(dx)>Math.abs(dy))movePhoto(dx<0?1:-1);
+});
+photoDialog.addEventListener('pointercancel',()=>photoStart=null);
+photoDialog.addEventListener('close',()=>{photoStart=null;galleryRequest++;});
+let galleryWheel=0,galleryWheelLocked=false,galleryWheelTimer;
+photoDialog.addEventListener('wheel',e=>{
+ if(e.ctrlKey)return;
+ e.preventDefault();clearTimeout(galleryWheelTimer);
+ galleryWheelTimer=setTimeout(()=>{galleryWheel=0;galleryWheelLocked=false;},180);
+ if(galleryWheelLocked)return;
+ const delta=Math.abs(e.deltaX)>Math.abs(e.deltaY)?e.deltaX:e.deltaY;
+ galleryWheel+=delta*(e.deltaMode===1?16:e.deltaMode===2?innerHeight:1);
+ if(Math.abs(galleryWheel)>45){movePhoto(galleryWheel>0?1:-1);galleryWheelLocked=true;}
+},{passive:false});
 boot();
