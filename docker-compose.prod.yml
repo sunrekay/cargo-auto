@@ -55,7 +55,44 @@ services:
       retries: 12
       start_period: 20s
 
+  # TLS terminator. nginx serves 80/443 and proxies to the API; certbot issues
+  # and renews the certificate. Only one proxy can hold 443, so caddy below is
+  # an either/or alternative selected by its profile.
+  nginx:
+    build:
+      context: ./docker/nginx
+    image: cargo-auto-nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:-}"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Renews in the background; issuance is a one-off, see `make prod-cert-issue`.
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM;
+             while :; do
+               certbot renew --webroot -w /var/www/certbot --quiet;
+               sleep 12h & wait $${!};
+             done"
+    depends_on:
+      - nginx
+
   caddy:
+    profiles: ["caddy"]
     image: caddy:2.10-alpine
     restart: unless-stopped
     ports:
@@ -76,5 +113,7 @@ services:
 
 volumes:
   pgdata:
+  letsencrypt:      # certificates and ACME account, survives redeploys
+  certbot_webroot:  # HTTP-01 challenge files shared with nginx
   caddy_data:
   caddy_config:

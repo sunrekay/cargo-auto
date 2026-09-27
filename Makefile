@@ -15,6 +15,8 @@ CITY ?= bin
 VNC_PORT ?= 6080
 PG_PORT ?= 55432
 PROD := $(COMPOSE) -f docker-compose.prod.yml
+# TLS terminator: nginx (with certbot) or caddy (issues certificates itself)
+PROXY ?= nginx
 
 export TARGET_CARS MAX_IMAGES_PER_CAR CONCURRENCY DOWNLOAD_IMAGES CITY VNC_PORT
 
@@ -25,7 +27,7 @@ export
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help env check build up down login prod prod-init prod-dns prod-verify prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
+.PHONY: help env check build up down login prod prod-init prod-dns prod-verify prod-cert-issue prod-cert-staging prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -122,8 +124,14 @@ prod: ## Bring the whole stack up on a VPS with TLS (make prod DOMAIN=… ACME_E
 	$(PROD) build
 	@echo "==> catalogue: $(shell test -f data/cargo-auto.db && echo 'data/cargo-auto.db' || echo 'MISSING — run make sqlite')"
 	@test -f data/cargo-auto.db || { echo "no catalogue to serve"; exit 1; }
-	@echo "==> starting API and TLS proxy"
-	$(PROD) up -d api caddy
+	@echo "==> starting API and the $(PROXY) TLS proxy"
+ifeq ($(PROXY),caddy)
+	$(PROD) --profile caddy up -d api caddy
+else
+	$(PROD) up -d api nginx certbot
+	@echo "==> certificate"
+	@$(MAKE) --no-print-directory prod-cert-issue
+endif
 	@$(MAKE) --no-print-directory prod-verify
 
 prod-init: ## Checks and scaffolding that must pass before the stack starts
@@ -146,8 +154,10 @@ prod-init: ## Checks and scaffolding that must pass before the stack starts
 		echo "  80 and 443 reachable — Let's Encrypt verifies over HTTP."; \
 		exit 1; }
 	@test -n "$(ACME_EMAIL)" || { echo "ACME_EMAIL is not set (used for certificate expiry notices)"; exit 1; }
-	@grep -q '^DOMAIN=' .env || echo "DOMAIN=$(DOMAIN)" >> .env
-	@grep -q '^ACME_EMAIL=' .env || echo "ACME_EMAIL=$(ACME_EMAIL)" >> .env
+	@grep -q '^DOMAIN=.\+' .env \
+		|| { sed -i.bak '/^DOMAIN=/d' .env && rm -f .env.bak; echo "DOMAIN=$(DOMAIN)" >> .env; }
+	@grep -q '^ACME_EMAIL=.\+' .env \
+		|| { sed -i.bak '/^ACME_EMAIL=/d' .env && rm -f .env.bak; echo "ACME_EMAIL=$(ACME_EMAIL)" >> .env; }
 	@test -d web || { echo "storefront missing: web/ is not present"; exit 1; }
 	@mkdir -p data/images
 	@echo "==> checks passed: domain $(DOMAIN), storefront present, .env complete"
@@ -185,10 +195,40 @@ prod-down: ## Stop the production stack (data and certificates are kept)
 	$(PROD) down
 
 prod-restart: ## Rebuild and restart API and proxy without touching the database
-	$(PROD) build api && $(PROD) up -d api caddy
+ifeq ($(PROXY),caddy)
+	$(PROD) build api && $(PROD) --profile caddy up -d api caddy
+else
+	$(PROD) build api nginx && $(PROD) up -d api nginx certbot
+endif
+
+prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
+	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
+	@test -n "$(ACME_EMAIL)" || { echo "ACME_EMAIL is not set"; exit 1; }
+	@if $(PROD) run --rm --entrypoint sh certbot -c \
+		'test -s /etc/letsencrypt/live/$(DOMAIN)/chain.pem' 2>/dev/null; then \
+		echo "  a real certificate is already installed for $(DOMAIN)"; \
+	else \
+		echo "  requesting a certificate from Let's Encrypt for $(DOMAIN)"; \
+		$(PROD) run --rm --entrypoint certbot certbot certonly \
+			--webroot -w /var/www/certbot \
+			-d $(DOMAIN) --email $(ACME_EMAIL) \
+			--agree-tos --no-eff-email --non-interactive $(CERTBOT_FLAGS) \
+		&& $(PROD) exec nginx nginx -s reload \
+		&& echo "  certificate installed and nginx reloaded" \
+		|| echo "  issuance failed — see 'make prod-logs'; the placeholder certificate stays in place"; \
+	fi
+
+prod-cert-staging: ## Same, against the Let's Encrypt staging CA (no rate limits)
+	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="--staging"
 
 prod-cert: ## Show the issued certificate
+ifeq ($(PROXY),caddy)
 	@$(PROD) exec -T caddy sh -c 'ls -R /data/caddy/certificates 2>/dev/null' || echo "no certificate yet"
+else
+	@$(PROD) run --rm --entrypoint sh certbot -c \
+		'openssl x509 -in /etc/letsencrypt/live/$(DOMAIN)/fullchain.pem -noout -subject -issuer -dates' \
+		2>/dev/null || echo "no certificate yet"
+endif
 
 
 clean: ## Remove the image and containers
