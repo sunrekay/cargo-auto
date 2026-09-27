@@ -83,6 +83,7 @@ function render(){
  restoreCardPhoto();
  updateFilters();
  requestAnimationFrame(seatDescription);
+ watchForSeating();
 }
 const warmedImages=new Map();
 function warmImage(url){
@@ -158,6 +159,34 @@ feed.addEventListener('load',e=>{
 // measures that gap and lifts the block into it, leaving the surplus at the
 // foot of the card where it reads as padding rather than a hole.
 const DESCRIPTION_GAP=22;
+// The photograph reaches its final size in stages — the element appears, the
+// file loads and its ratio is applied, a transition swaps it — and each stage
+// moves the gap the description is seated against. Rather than guess at the
+// right moment, watch the picture's box and re-seat whenever it changes.
+let seatQueued=false;
+const seatObserver=new ResizeObserver(()=>{
+ if(seatQueued)return;
+ seatQueued=true;
+ requestAnimationFrame(()=>{seatQueued=false;seatDescription();});
+});
+function watchForSeating(){
+ seatObserver.disconnect();
+ const card=feed.querySelector('.car:not(.departing)');
+ const img=card?.querySelector('.visual img');
+ if(img)seatObserver.observe(img);
+ scheduleSeating();
+}
+
+// The observer catches most of it, but the picture also settles through a
+// decode and a transition that may not resize its box at all. A couple of
+// follow-up passes cost nothing and remove the guesswork: each is idempotent,
+// and once the layout is stable they change nothing.
+const seatTimers=[];
+function scheduleSeating(){
+ while(seatTimers.length)clearTimeout(seatTimers.pop());
+ requestAnimationFrame(seatDescription);
+ for(const delay of [140,420])seatTimers.push(setTimeout(seatDescription,delay));
+}
 function seatDescription(){
  const card=feed.querySelector('.car:not(.departing)');
  if(!card)return;
@@ -165,28 +194,26 @@ function seatDescription(){
  if(!img||!body)return;
  const band=card.querySelector('.inspection');
 
- // Measure with the band folded away, so the decision never depends on its own
- // outcome. A viewport-height breakpoint got this wrong: between roughly 650
- // and 760px the band was already hidden while the slack it would have filled
- // was still 80px deep.
- body.style.setProperty('--body-lift','0px');
- if(band)band.hidden=true;
- const bare=body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
+ // Measure each arrangement rather than predict it. Showing the band makes the
+ // picture area shorter, which shrinks the photograph itself (max-height), so
+ // the gap does not simply shrink by the band's height — an earlier version
+ // did that arithmetic and let the band overlap the photo by 11px at 611.
+ const gapNow=()=>{
+  body.style.setProperty('--body-lift','0px');
+  return body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
+ };
 
- if(band){
-  // Try it full size, then compact, and only fold it away if neither fits —
-  // otherwise the slack it would have filled just reappears at the foot.
-  band.hidden=false;band.classList.remove('compact');
-  let height=band.getBoundingClientRect().height;
-  if(bare-DESCRIPTION_GAP-height<10){
-   band.classList.add('compact');
-   height=band.getBoundingClientRect().height;
+ for(const state of ['full','compact','none']){
+  if(band){
+   band.hidden=state==='none';
+   band.classList.toggle('compact',state==='compact');
   }
-  band.hidden=bare-DESCRIPTION_GAP-height<10;
+  const gap=gapNow();
+  if(!band||state==='none'||gap>=DESCRIPTION_GAP){
+   body.style.setProperty('--body-lift',Math.max(0,Math.round(gap-DESCRIPTION_GAP))+'px');
+   return;
+  }
  }
-
- const gap=body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
- body.style.setProperty('--body-lift',Math.max(0,Math.round(gap-DESCRIPTION_GAP))+'px');
 }
 addEventListener('resize',seatDescription);
 let drag=null;

@@ -235,13 +235,13 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
 }
 .match-app .grade-scale{display:flex;gap:4px;flex:0 0 auto}
 .match-app .grade-scale span{
- display:grid;place-items:center;width:25px;height:25px;border-radius:8px;
+ display:grid;place-items:center;width:25px;height:25px;border-radius:6px;
  font-size:12px;font-weight:650;line-height:1;
  color:#7d8d7e;background:#ffffff0a;border:1px solid #ffffff14;
 }
 .match-app .grade-scale span.on{
- color:#1b2a1c;background:#d5f78a;border-color:#d5f78a;
- box-shadow:0 4px 14px #d5f78a33;transform:scale(1.08);
+ /* a marker on a scale, not a badge: no glow, no scaling */
+ color:#17231a;background:#cdee80;border-color:#cdee80;
 }
 .match-app .inspection p{margin:0;font-size:11px;line-height:1.45;color:#aebaad}
 .match-app .inspection p span{
