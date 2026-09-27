@@ -60,7 +60,18 @@ function inspection(c){
 const plural=(n,one,few,many)=>{const a=Math.abs(n)%100,b=a%10;
  return a>10&&a<20?many:b>1&&b<5?few:b===1?one:many;};
 
-function cardMarkup(c){return `<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button></div><div class="car-body"><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${escapeHTML(c.fuel||'—')} / КИТАЙ</span><h3>${escapeHTML(carTitle(c))}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div>${specRow(c)}${inspection(c)}</div></article>`;}
+// The price carries the accent through its size and a hairline, not a filled
+// capsule — a coloured block reads as a sticker, which is the opposite of what
+// a car this expensive should look like. Only the currency mark is tinted.
+function priceMarkup(c){
+ const value=c.price??c.price_usd;
+ if(value==null)return '—';
+ const amount=new Intl.NumberFormat(currency==='RUB'?'ru-RU':'en-US').format(value);
+ return currency==='RUB'
+  ? `${amount}<i>₽</i>`
+  : `<i>$</i>${amount}`;
+}
+function cardMarkup(c){return `<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button></div><div class="car-body"><div class="price-row"><div><div class="price-inline"><div class="price">${priceMarkup(c)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${escapeHTML(c.fuel||'—')} / КИТАЙ</span><h3>${escapeHTML(carTitle(c))}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div>${specRow(c)}${inspection(c)}</div></article>`;}
 function render(){
  const list=eligible();activeIndex=Math.max(0,Math.min(activeIndex,Math.max(0,list.length-1)));const c=list[activeIndex];
  document.querySelectorAll('[data-view]').forEach(x=>{const on=x.dataset.view===view;x.setAttribute('aria-pressed',String(on));x.classList.toggle('active',on)});
@@ -152,10 +163,30 @@ function seatDescription(){
  if(!card)return;
  const img=card.querySelector('.visual img'),body=card.querySelector('.car-body');
  if(!img||!body)return;
+ const band=card.querySelector('.inspection');
+
+ // Measure with the band folded away, so the decision never depends on its own
+ // outcome. A viewport-height breakpoint got this wrong: between roughly 650
+ // and 760px the band was already hidden while the slack it would have filled
+ // was still 80px deep.
  body.style.setProperty('--body-lift','0px');
+ if(band)band.hidden=true;
+ const bare=body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
+
+ if(band){
+  // Try it full size, then compact, and only fold it away if neither fits —
+  // otherwise the slack it would have filled just reappears at the foot.
+  band.hidden=false;band.classList.remove('compact');
+  let height=band.getBoundingClientRect().height;
+  if(bare-DESCRIPTION_GAP-height<10){
+   band.classList.add('compact');
+   height=band.getBoundingClientRect().height;
+  }
+  band.hidden=bare-DESCRIPTION_GAP-height<10;
+ }
+
  const gap=body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
- const lift=Math.max(0,Math.round(gap-DESCRIPTION_GAP));
- body.style.setProperty('--body-lift',lift+'px');
+ body.style.setProperty('--body-lift',Math.max(0,Math.round(gap-DESCRIPTION_GAP))+'px');
 }
 addEventListener('resize',seatDescription);
 let drag=null;

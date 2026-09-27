@@ -171,22 +171,35 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
  .match-app .car-body>.price-row{padding-bottom:7px;margin-bottom:8px}
 }
 
-/* The price was pale text among pale text. As a filled chip it reads first,
-   echoing the outlined spec chips below it while clearly outranking them. */
-.match-app .price-inline{display:flex;align-items:center;column-gap:11px;row-gap:2px;flex-wrap:wrap}
+/* The price leads by size and precision rather than by a coloured capsule —
+   a filled block reads as a sticker. A hairline in the accent colour runs
+   beneath it, and only the currency mark is tinted. */
+.match-app .price-inline{display:flex;align-items:baseline;column-gap:12px;row-gap:2px;flex-wrap:wrap}
 .match-app .price{
+ position:relative;
  display:inline-block;
- background:#d5f78a;
- color:#1b2a1c;
- padding:7px 15px;
- border-radius:14px;
- font-size:26px;
- letter-spacing:-.9px;
- box-shadow:0 6px 18px #d5f78a2e;
+ padding:0 0 9px;
+ background:none;
+ border-radius:0;
+ box-shadow:none;
+ color:#f4f8f0;
+ font-size:34px;
+ font-weight:640;
+ letter-spacing:-1.4px;
+ line-height:1;
+ font-variant-numeric:tabular-nums;
+}
+.match-app .price:after{
+ content:'';position:absolute;left:0;right:0;bottom:0;height:2px;
+ background:linear-gradient(90deg,#d5f78a,#d5f78a 62%,#d5f78a00);
+}
+.match-app .price i{
+ font-style:normal;color:#cdee80;font-size:.62em;font-weight:600;
+ margin-left:5px;letter-spacing:0;
 }
 .match-app .price-origin{color:#9fb0a0;font-size:10px;line-height:1.2}
-@media(max-width:360px){.match-app .price{font-size:22px;padding:6px 12px}}
-@media(min-height:481px) and (max-height:600px){.match-app .price{font-size:21px;padding:5px 11px}}
+@media(max-width:360px){.match-app .price{font-size:28px;letter-spacing:-1.1px}}
+@media(min-height:481px) and (max-height:600px){.match-app .price{font-size:26px;padding-bottom:7px}}
 
 /* Figures, not pills: value first and large, label quiet underneath, hairlines
    between. Reads in one pass instead of four separate objects. */
@@ -213,12 +226,12 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
 /* The inspection is the thing these listings have that a phone snapshot on a
    classifieds site does not — a grade on a fixed scale and a measured report.
    Shown where the card has the height for it. */
-.match-app .inspection{display:none}
-@media(min-height:761px){
- .match-app .inspection{
-  display:flex;align-items:center;gap:13px;
-  margin:17px 0 0;padding-top:15px;border-top:1px solid #ffffff1a;
- }
+/* Shown when the card actually has the room; seatDescription() decides and
+   toggles `hidden`, because a viewport-height breakpoint cannot see how tall
+   the photograph left the card. */
+.match-app .inspection{
+ display:flex;align-items:center;gap:13px;
+ margin:17px 0 0;padding-top:15px;border-top:1px solid #ffffff1a;
 }
 .match-app .grade-scale{display:flex;gap:4px;flex:0 0 auto}
 .match-app .grade-scale span{
@@ -288,3 +301,10 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
  #photo-dialog #photo-caption{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 52px)}
  .match-app #photo-dialog .close{bottom:calc(max(10px,env(safe-area-inset-bottom)) + 48px)}
 }
+
+/* Compact form, used when the card has room for the inspection but not for it
+   at full size. Same information, tighter. */
+.match-app .inspection.compact{margin-top:11px;padding-top:10px;gap:10px}
+.match-app .inspection.compact .grade-scale span{width:21px;height:21px;font-size:10px;border-radius:7px}
+.match-app .inspection.compact p{font-size:10px;line-height:1.35}
+.match-app .inspection.compact p span{font-size:8px;letter-spacing:1.1px}
