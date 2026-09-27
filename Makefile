@@ -167,24 +167,8 @@ prod-init: ## Checks and scaffolding that must pass before the stack starts
 	@$(MAKE) --no-print-directory prod-ports
 	@$(MAKE) --no-print-directory prod-dns
 
-prod-ports: ## Report anything already holding 80 or 443
-	@for p in 80 443; do \
-		who=""; \
-		if command -v ss >/dev/null 2>&1; then \
-			who=$$(ss -lptnH "sport = :$$p" 2>/dev/null | head -1); \
-		elif command -v lsof >/dev/null 2>&1; then \
-			who=$$(lsof -nP -iTCP:$$p -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $$1}'); \
-		fi; \
-		if [ -z "$$who" ]; then \
-			echo "  port $$p: free"; \
-		elif echo "$$who" | grep -qiE "docker|com.docke"; then \
-			echo "  port $$p: held by docker (compose will take it over)"; \
-		else \
-			echo "  warning: port $$p is held outside docker:"; \
-			echo "           $$who"; \
-			echo "           stop that service, or nginx cannot bind"; \
-		fi; \
-	done
+prod-ports: ## Report every process listening on 80 and 443
+	@sh scripts/check-ports.sh
 
 prod-dns: ## Warn when the domain does not resolve to this host
 	@ip=$$(curl -s --max-time 5 https://api.ipify.org || true); \
