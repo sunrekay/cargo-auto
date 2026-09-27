@@ -9,8 +9,7 @@ make prod DOMAIN=cars.example.com ACME_EMAIL=you@example.com
 ```
 
 Одна команда поднимает на VPS весь стек: API, витрину и TLS. На 443 стоит nginx,
-сертификат Let's Encrypt выпускает и продлевает certbot. Альтернатива —
-`PROXY=caddy`, тогда сертификатом занимается сам Caddy. Подробности —
+сертификат Let's Encrypt выпускает и продлевает certbot. Подробности —
 [DEPLOY.md](DEPLOY.md).
 
 Посмотреть локально, без домена:
@@ -31,7 +30,7 @@ docker run --rm -p 8000:8000 \
 | `data/cargo-auto.db` | сам каталог: 85 автомобилей, 10 617 характеристик, 2 121 фотография |
 | `parser/`, `tools/` | сборщик данных с guazi.com — см. [PARSER.md](PARSER.md) |
 | `db/schema.sql` | схема, общая для Postgres и SQLite |
-| `docker/` | nginx с ACME и автоперезагрузкой, Caddyfile как альтернатива |
+| `docker/` | nginx с ACME-проверкой, заглушкой сертификата и автоперезагрузкой |
 
 ## Каталог
 

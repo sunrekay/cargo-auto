@@ -49,20 +49,9 @@ or the firewall is sorted out.
 Renewal runs every 12 hours in the certbot container, and nginx reloads every
 6 hours to pick up a renewed certificate.
 
-### Choosing the proxy
-
-nginx is the default. Caddy remains available and issues certificates itself
-with no certbot involved:
-
-```bash
-make prod PROXY=caddy DOMAIN=cars.example.com ACME_EMAIL=you@example.com
-```
-
-Only one of them can hold port 443, so this is an either/or choice.
-
 Nothing in the sequence destroys data: the schema is `CREATE TABLE IF NOT EXISTS`
-throughout, and the Postgres volume and Caddy's certificate store both persist
-across `make prod-down` and redeploys.
+throughout, and both the data and the certificate volumes persist across
+`make prod-down` and redeploys.
 
 ## Day to day
 
@@ -91,12 +80,6 @@ flow works, delete the staging certificate and request a real one:
 docker compose -f docker-compose.prod.yml run --rm --entrypoint \
   "certbot delete --cert-name cars.example.com" certbot
 make prod-cert-issue DOMAIN=cars.example.com ACME_EMAIL=you@example.com
-```
-
-With `PROXY=caddy`, point Caddy at staging in `.env` instead:
-
-```
-ACME_CA_DIRECTIVE=acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
 ```
 
 ## Filling the catalogue

@@ -2,7 +2,7 @@
 #
 #   make prod DOMAIN=example.com ACME_EMAIL=you@example.com
 #
-# Caddy obtains and renews the Let's Encrypt certificate on its own, so the only
+# nginx terminates TLS and certbot keeps the certificate current, so the only
 # prerequisites are an A record for DOMAIN pointing at this host and ports
 # 80/443 open. The crawler is not part of this stack — it runs separately and
 # fills the same database.
@@ -55,9 +55,8 @@ services:
       retries: 12
       start_period: 20s
 
-  # TLS terminator. nginx serves 80/443 and proxies to the API; certbot issues
-  # and renews the certificate. Only one proxy can hold 443, so caddy below is
-  # an either/or alternative selected by its profile.
+  # TLS terminator: nginx serves 80/443 and proxies to the API, certbot issues
+  # and renews the certificate.
   nginx:
     build:
       context: ./docker/nginx
@@ -91,29 +90,7 @@ services:
     depends_on:
       - nginx
 
-  caddy:
-    profiles: ["caddy"]
-    image: caddy:2.10-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    environment:
-      DOMAIN: "${DOMAIN:-}"
-      ACME_EMAIL: "${ACME_EMAIL:-}"
-      ACME_CA_DIRECTIVE: "${ACME_CA_DIRECTIVE:-}"
-    volumes:
-      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data      # certificates and ACME account keys live here
-      - caddy_config:/config
-    depends_on:
-      api:
-        condition: service_healthy
-
 volumes:
   pgdata:
   letsencrypt:      # certificates and ACME account, survives redeploys
   certbot_webroot:  # HTTP-01 challenge files shared with nginx
-  caddy_data:
-  caddy_config:

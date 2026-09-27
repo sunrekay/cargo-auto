@@ -15,8 +15,6 @@ CITY ?= bin
 VNC_PORT ?= 6080
 PG_PORT ?= 55432
 PROD := $(COMPOSE) -f docker-compose.prod.yml
-# TLS terminator: nginx (with certbot) or caddy (issues certificates itself)
-PROXY ?= nginx
 
 export TARGET_CARS MAX_IMAGES_PER_CAR CONCURRENCY DOWNLOAD_IMAGES CITY VNC_PORT
 
@@ -124,14 +122,10 @@ prod: ## Bring the whole stack up on a VPS with TLS (make prod DOMAIN=… ACME_E
 	$(PROD) build
 	@echo "==> catalogue: $(shell test -f data/cargo-auto.db && echo 'data/cargo-auto.db' || echo 'MISSING — run make sqlite')"
 	@test -f data/cargo-auto.db || { echo "no catalogue to serve"; exit 1; }
-	@echo "==> starting API and the $(PROXY) TLS proxy"
-ifeq ($(PROXY),caddy)
-	$(PROD) --profile caddy up -d api caddy
-else
+	@echo "==> starting API, nginx and certbot"
 	$(PROD) up -d api nginx certbot
 	@echo "==> certificate"
 	@$(MAKE) --no-print-directory prod-cert-issue
-endif
 	@$(MAKE) --no-print-directory prod-verify
 
 prod-init: ## Checks and scaffolding that must pass before the stack starts
@@ -194,12 +188,8 @@ prod-logs: ## Follow the production logs
 prod-down: ## Stop the production stack (data and certificates are kept)
 	$(PROD) down
 
-prod-restart: ## Rebuild and restart API and proxy without touching the database
-ifeq ($(PROXY),caddy)
-	$(PROD) build api && $(PROD) --profile caddy up -d api caddy
-else
+prod-restart: ## Rebuild and restart API and proxy, leaving the data alone
 	$(PROD) build api nginx && $(PROD) up -d api nginx certbot
-endif
 
 prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
@@ -221,14 +211,10 @@ prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 prod-cert-staging: ## Same, against the Let's Encrypt staging CA (no rate limits)
 	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="--staging"
 
-prod-cert: ## Show the issued certificate
-ifeq ($(PROXY),caddy)
-	@$(PROD) exec -T caddy sh -c 'ls -R /data/caddy/certificates 2>/dev/null' || echo "no certificate yet"
-else
+prod-cert: ## Show the certificate currently installed
 	@$(PROD) run --rm --entrypoint sh certbot -c \
 		'openssl x509 -in /etc/letsencrypt/live/$(DOMAIN)/fullchain.pem -noout -subject -issuer -dates' \
 		2>/dev/null || echo "no certificate yet"
-endif
 
 
 clean: ## Remove the image and containers
