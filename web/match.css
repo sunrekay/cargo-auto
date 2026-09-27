@@ -144,10 +144,13 @@ body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max
  width:auto;height:auto;max-width:100%;max-height:100%;
  aspect-ratio:4/3;
  padding:0;
- -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 7%,#000 88%,transparent 100%),
-                    linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
- mask-image:linear-gradient(180deg,transparent 0,#000 7%,#000 88%,transparent 100%),
-            linear-gradient(90deg,transparent 0,#000 7%,#000 93%,transparent 100%);
+ /* A feather in pixels, not per cent: a percentage of the width eats into the
+    car itself on a wide photo. Just enough to kill the cut edge — except at
+    the bottom, where a longer fade carries the picture into the card body. */
+ -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 10px,#000 calc(100% - 48px),transparent 100%),
+                    linear-gradient(90deg,transparent 0,#000 10px,#000 calc(100% - 10px),transparent 100%);
+ mask-image:linear-gradient(180deg,transparent 0,#000 10px,#000 calc(100% - 48px),transparent 100%),
+            linear-gradient(90deg,transparent 0,#000 10px,#000 calc(100% - 10px),transparent 100%);
  -webkit-mask-composite:source-in;
  mask-composite:intersect;
 }
