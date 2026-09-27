@@ -16,22 +16,35 @@ Encrypt certificate and renews it in the background.
    match, because the ACME challenge will otherwise fail.
 2. **Open ports 80 and 443.** Let's Encrypt validates over HTTP on port 80, and
    the site is served on 443. Both must be reachable from the internet.
-3. **Have the storefront present.** `cargo-auto/` is the frontend; clone it next
-   to this project if it is missing.
+3. **Have the storefront present.** `web/index.html` must exist in this checkout.
+4. **Use Docker Compose with `up --wait` support.** Docker Compose v2 is required.
 
 ## What `make prod` does
 
-`prod` runs `prod-init` first and refuses to start if anything is missing:
+The ordered `scripts/prod-start.sh` workflow follows the deployment approach in
+`genmail_server`, adapted to this project's API/nginx/certbot stack:
 
-| Step | What it checks or creates |
-|---|---|
-| `prod-init` | docker present and running; `.env` exists (created from the example if not); a database password (generated if absent); `DOMAIN` and `ACME_EMAIL` set and recorded in `.env`; the storefront directory; `data/images` |
-| `prod-dns` | whether `DOMAIN` resolves to this host, warning early instead of failing inside ACME |
-| build | images for the API (and the parser when you use it) |
-| database | starts Postgres, waits for it to accept connections, applies `db/schema.sql` — idempotent, so it is safe on every deploy |
-| services | starts the API, waits for its health check, then nginx and certbot |
-| certificate | requests one from Let's Encrypt; on failure the placeholder stays and the site keeps serving |
-| `prod-verify` | queries `/api/health` and prints the URLs |
+1. Validate domain, email, Docker/Compose, curl, storefront and SQLite catalogue
+   before any build. PostgreSQL URLs do not require a local SQLite file.
+   Persist the effective domain/email in `.env`, validate Compose configuration,
+   report port listeners and require DNS resolution (not a match to a local IP).
+2. Build only API and nginx images.
+3. Start API and nginx with `--wait --wait-timeout 180`. When DATABASE_URL points
+   to the Compose host `postgres`, start its profile and wait first; an existing
+   database is not reset. External PostgreSQL must already be reachable.
+4. Issue or renew the certificate with `--keep-until-expiring`. A certbot failure
+   stops deployment. Restart nginx to switch from its placeholder, validate its
+   configuration, then start the background renewal service.
+5. Request the public HTTPS routes `/api/health`, `/`, and `/api/cars` with normal
+   TLS validation. Any failed route makes the command fail instead of printing
+   a successful deployment. Each route gets up to 30 attempts (5s request timeout,
+   2s between attempts).
+6. Print the site and API addresses only after the checks pass.
+
+Like the reference project, `make update` runs `git pull --ff-only`, updates pinned
+submodules, then runs `make prod`. No automatic global Docker pruning is performed;
+other projects may share the Docker daemon. No internal PKI or application
+migrations are added: this stack uses the supplied catalogue and public TLS.
 
 ### How the certificate is obtained
 
@@ -56,6 +69,7 @@ throughout, and both the data and the certificate volumes persist across
 ## Day to day
 
 ```bash
+make update             # pull --ff-only, update submodules, deploy
 make prod-logs          # follow everything
 make prod-restart       # rebuild and restart API + proxy, leave the data alone
 make prod-cert          # show the certificate currently installed
@@ -70,17 +84,22 @@ Let's Encrypt rate-limits failed issuance — five failures per account, per
 hostname, per hour. While shaking out a new host, use the staging CA:
 
 ```bash
-make prod-cert-staging DOMAIN=cars.example.com ACME_EMAIL=you@example.com
+make prod DOMAIN=cars.example.com ACME_EMAIL=you@example.com STAGING=1
 ```
 
 Browsers flag a staging certificate as untrusted; that is expected. When the
 flow works, delete the staging certificate and request a real one:
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm --entrypoint \
-  "certbot delete --cert-name cars.example.com" certbot
-make prod-cert-issue DOMAIN=cars.example.com ACME_EMAIL=you@example.com
+make prod-cert-reset DOMAIN=cars.example.com
+make prod DOMAIN=cars.example.com ACME_EMAIL=you@example.com
 ```
+
+Staging runs verify the API internally and explicitly report a rehearsal, not a
+trusted public HTTPS deployment. A production certificate is never replaced by
+staging automatically; a staging certificate blocks production until explicitly
+reset. Failed issuance keeps existing containers/data intact but returns an error.
+
 
 ## Filling the catalogue
 

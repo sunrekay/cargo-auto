@@ -20,11 +20,9 @@ PROD := $(COMPOSE) -f docker-compose.prod.yml
 # reject staging certificates, so this is for rehearsing a deployment, never
 # for serving visitors.
 STAGING ?= 0
-ifeq ($(STAGING),1)
-CERTBOT_FLAGS += --staging
-endif
 
 export TARGET_CARS MAX_IMAGES_PER_CAR CONCURRENCY DOWNLOAD_IMAGES CITY VNC_PORT
+export DOCKER DOMAIN ACME_EMAIL STAGING DATABASE_URL
 
 # Credentials for the local Postgres/pgAdmin live in .env
 ifneq (,$(wildcard .env))
@@ -33,7 +31,7 @@ export
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help env check build up down login prod prod-init prod-ports prod-dns prod-verify prod-cert-issue prod-cert-staging prod-cert-reset prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
+.PHONY: update help env check build up down login prod prod-init prod-ports prod-dns prod-verify prod-cert-issue prod-cert-staging prod-cert-reset prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -125,19 +123,16 @@ csv: ## Rebuild CSV from cars.json without re-parsing
 	$(COMPOSE) run --rm --entrypoint "python -m parser.export" parser
 
 # ---------------------------------------------------------------- production
-prod: ## Bring the stack up with TLS (make prod DOMAIN=… ACME_EMAIL=… [STAGING=1])
-	@$(MAKE) --no-print-directory prod-init
-	@echo "==> building images"
-	$(PROD) build
-	@echo "==> catalogue: $(shell test -f data/cargo-auto.db && echo 'data/cargo-auto.db' || echo 'MISSING — run make sqlite')"
-	@test -f data/cargo-auto.db || { echo "no catalogue to serve"; exit 1; }
-	@echo "==> starting API, nginx and certbot"
-	$(PROD) up -d --remove-orphans
-	@echo "==> certificate from the $(if $(filter 1,$(STAGING)),STAGING,production) CA"
-	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="$(CERTBOT_FLAGS)"
-	@$(MAKE) --no-print-directory prod-verify
+prod: ## Deploy: preflight -> build -> healthy services -> TLS -> public verification
+	@bash scripts/prod-start.sh
+
+update: ## Fast-forward the checkout, then deploy (as in genmail_server)
+	git pull --ff-only
+	git submodule update --init --recursive
+	@$(MAKE) prod
 
 prod-init: ## Checks and scaffolding that must pass before the stack starts
+	@bash scripts/prod-check.sh
 	@test -n "$(DOCKER)" || { echo "docker CLI not found"; exit 1; }
 	@$(DOCKER) info >/dev/null 2>&1 || { echo "docker daemon is not running"; exit 1; }
 	@test -f .env || { cp .env.example .env; echo "created .env from the example"; }
@@ -157,11 +152,12 @@ prod-init: ## Checks and scaffolding that must pass before the stack starts
 		echo "  80 and 443 reachable — Let's Encrypt verifies over HTTP."; \
 		exit 1; }
 	@test -n "$(ACME_EMAIL)" || { echo "ACME_EMAIL is not set (used for certificate expiry notices)"; exit 1; }
-	@grep -q '^DOMAIN=.\+' .env \
-		|| { sed -i.bak '/^DOMAIN=/d' .env && rm -f .env.bak; echo "DOMAIN=$(DOMAIN)" >> .env; }
-	@grep -q '^ACME_EMAIL=.\+' .env \
-		|| { sed -i.bak '/^ACME_EMAIL=/d' .env && rm -f .env.bak; echo "ACME_EMAIL=$(ACME_EMAIL)" >> .env; }
+	@set -e; tmp=$$(mktemp .env.prod.XXXXXX); \
+		awk '!/^DOMAIN=/ && !/^ACME_EMAIL=/' .env > "$$tmp"; \
+		printf 'DOMAIN=%s\nACME_EMAIL=%s\n' "$(DOMAIN)" "$(ACME_EMAIL)" >> "$$tmp"; \
+		chmod 600 "$$tmp" && mv "$$tmp" .env
 	@test -d web || { echo "storefront missing: web/ is not present"; exit 1; }
+	@$(PROD) config --quiet
 	@mkdir -p data/images
 	@echo "==> checks passed: domain $(DOMAIN), storefront present, .env complete"
 	@$(MAKE) --no-print-directory prod-ports
@@ -170,30 +166,16 @@ prod-init: ## Checks and scaffolding that must pass before the stack starts
 prod-ports: ## Report every process listening on 80 and 443
 	@sh scripts/check-ports.sh
 
-prod-dns: ## Warn when the domain does not resolve to this host
-	@ip=$$(curl -s --max-time 5 https://api.ipify.org || true); \
-	dns=$$(getent hosts $(DOMAIN) 2>/dev/null | awk '{print $$1}' | head -1); \
-	if [ -n "$$ip" ] && [ -n "$$dns" ] && [ "$$ip" != "$$dns" ]; then \
-		echo "  warning: $(DOMAIN) resolves to $$dns but this host is $$ip"; \
-		echo "           Let's Encrypt will fail until the A record matches"; \
-	elif [ -z "$$dns" ]; then \
-		echo "  warning: $(DOMAIN) does not resolve yet — certificate issuance will fail"; \
-	else echo "==> DNS ok: $(DOMAIN) -> $$dns"; fi
+prod-dns: ## Require DNS resolution before spending ACME validation attempts
+	@if command -v getent >/dev/null 2>&1; then \
+		getent hosts "$(DOMAIN)" >/dev/null; \
+	elif command -v dscacheutil >/dev/null 2>&1; then \
+		dscacheutil -q host -a name "$(DOMAIN)" | grep -q 'ip_address:'; \
+	else echo "Install getent to check DNS" >&2; exit 1; fi \
+	|| { echo "DOMAIN does not resolve; fix DNS before make prod" >&2; exit 1; }
 
-prod-verify: ## Report what the running stack answers
-	@echo "==> waiting for the API"
-	@for i in $$(seq 1 30); do \
-		$(PROD) exec -T api python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3)" >/dev/null 2>&1 && break; \
-		printf "."; sleep 2; done; echo ""
-	@$(PROD) exec -T api python -c "import urllib.request,json;print('  API:', json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=5)))" 2>/dev/null \
-		|| echo "  API did not answer — check 'make prod-logs'"
-	@echo ""
-	@echo "  site      ->  https://$(DOMAIN)/"
-	@echo "  API       ->  https://$(DOMAIN)/api/cars"
-	@echo "  photos    ->  https://$(DOMAIN)/media/<car-id>/<file>"
-	@echo ""
-	@echo "  The first request may take ~30s while Let's Encrypt issues the certificate."
-	@echo "  Watch it happen:  make prod-logs"
+prod-verify: ## Verify public HTTPS, storefront and API; fail if any route is unavailable
+	@bash scripts/prod-verify.sh
 
 prod-logs: ## Follow the production logs
 	$(PROD) logs -f --tail=80
@@ -204,26 +186,11 @@ prod-down: ## Stop the production stack (data and certificates are kept)
 prod-restart: ## Rebuild and restart API and proxy, leaving the data alone
 	$(PROD) build api nginx && $(PROD) up -d --remove-orphans
 
-prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
-	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
-	@test -n "$(ACME_EMAIL)" || { echo "ACME_EMAIL is not set"; exit 1; }
-	@if $(PROD) run --rm --entrypoint sh certbot -c \
-		'test -s /etc/letsencrypt/live/$(DOMAIN)/chain.pem' 2>/dev/null; then \
-		echo "  a real certificate is already installed for $(DOMAIN)"; \
-	else \
-		echo "  requesting a certificate from Let's Encrypt for $(DOMAIN)"; \
-		$(PROD) run --rm --entrypoint certbot certbot certonly \
-			--webroot -w /var/www/certbot \
-			-d $(DOMAIN) --email $(ACME_EMAIL) \
-			--agree-tos --no-eff-email --non-interactive $(CERTBOT_FLAGS) \
-		&& $(PROD) restart nginx \
-		&& echo "  certificate installed and nginx restarted onto it" \
-		&& $(if $(findstring --staging,$(CERTBOT_FLAGS)),echo "  STAGING certificate: browsers will reject it; for a real one run" && echo "    make prod-cert-reset DOMAIN=$(DOMAIN) && make prod DOMAIN=$(DOMAIN) ACME_EMAIL=$(ACME_EMAIL)",true) \
-		|| echo "  issuance failed — see 'make prod-logs'; the placeholder certificate stays in place"; \
-	fi
+prod-cert-issue: ## Obtain or renew the domain certificate; failures stop deployment
+	@bash scripts/prod-cert.sh
 
-prod-cert-staging: ## Request a staging certificate only (same as prod STAGING=1)
-	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="--staging"
+prod-cert-staging: ## Request a staging certificate (untrusted by browsers)
+	@$(MAKE) --no-print-directory prod-cert-issue STAGING=1
 
 prod-cert-reset: ## Delete every certificate for DOMAIN (after a staging rehearsal)
 	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
@@ -233,9 +200,8 @@ prod-cert-reset: ## Delete every certificate for DOMAIN (after a staging rehears
 	@echo "  nginx is back on its placeholder until you issue again"
 
 prod-cert: ## Show the certificate currently installed
-	@$(PROD) run --rm --entrypoint sh certbot -c \
-		'openssl x509 -in /etc/letsencrypt/live/$(DOMAIN)/fullchain.pem -noout -subject -issuer -dates' \
-		2>/dev/null || echo "no certificate yet"
+	@$(PROD) exec -T nginx sh -c \
+		'openssl x509 -in "/etc/letsencrypt/live/$$DOMAIN/fullchain.pem" -noout -subject -issuer -dates'
 
 
 clean: ## Remove the image and containers
