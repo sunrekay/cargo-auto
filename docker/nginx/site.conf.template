@@ -57,13 +57,20 @@ server {
 
     client_max_body_size 4m;
 
+    # Docker's embedded DNS. Naming the upstream through a variable defers
+    # resolution to request time: nginx no longer refuses to start when the API
+    # container is not up yet, and it follows the API to a new address after a
+    # restart instead of serving a stale one.
+    resolver ${RESOLVER} valid=10s ipv6=off;
+
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
         default_type "text/plain";
     }
 
     location / {
-        proxy_pass http://api:8000;
+        set $upstream_api http://api:8000;
+        proxy_pass $upstream_api$request_uri;
         proxy_http_version 1.1;
         proxy_set_header Host              $host;
         proxy_set_header X-Real-IP         $remote_addr;
@@ -72,5 +79,13 @@ server {
         proxy_set_header Upgrade           $http_upgrade;
         proxy_set_header Connection        "upgrade";
         proxy_read_timeout 60s;
+        proxy_next_upstream error timeout http_502 http_503 http_504;
+    }
+
+    error_page 502 503 504 =503 /__unavailable.html;
+    location = /__unavailable.html {
+        internal;
+        default_type text/html;
+        return 503 '<!doctype html><meta charset="utf-8"><title>Сервис недоступен</title><p>Каталог временно недоступен. Обновите страницу через минуту.';
     }
 }
