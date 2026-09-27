@@ -16,6 +16,14 @@ VNC_PORT ?= 6080
 PG_PORT ?= 55432
 PROD := $(COMPOSE) -f docker-compose.prod.yml
 
+# STAGING=1 asks Let's Encrypt's staging CA instead of the real one. Browsers
+# reject staging certificates, so this is for rehearsing a deployment, never
+# for serving visitors.
+STAGING ?= 0
+ifeq ($(STAGING),1)
+CERTBOT_FLAGS += --staging
+endif
+
 export TARGET_CARS MAX_IMAGES_PER_CAR CONCURRENCY DOWNLOAD_IMAGES CITY VNC_PORT
 
 # Credentials for the local Postgres/pgAdmin live in .env
@@ -25,7 +33,7 @@ export
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help env check build up down login prod prod-init prod-dns prod-verify prod-cert-issue prod-cert-staging prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
+.PHONY: help env check build up down login prod prod-init prod-dns prod-verify prod-cert-issue prod-cert-staging prod-cert-reset prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -33,6 +41,7 @@ help: ## Show available targets
 	@echo ""
 	@echo "  Vars: TARGET_CARS=$(TARGET_CARS) MAX_IMAGES_PER_CAR=$(MAX_IMAGES_PER_CAR) CONCURRENCY=$(CONCURRENCY)"
 	@echo "  Ports: noVNC=$(VNC_PORT) Postgres=$(PG_PORT)"
+	@echo "  Rehearse TLS without burning rate limits:  make prod DOMAIN=… ACME_EMAIL=… STAGING=1"
 
 env: ## Create .env from the example if it is missing
 	@test -f .env || { cp .env.example .env; echo "created .env — set the two passwords in it"; }
@@ -116,7 +125,7 @@ csv: ## Rebuild CSV from cars.json without re-parsing
 	$(COMPOSE) run --rm --entrypoint "python -m parser.export" parser
 
 # ---------------------------------------------------------------- production
-prod: ## Bring the whole stack up on a VPS with TLS (make prod DOMAIN=… ACME_EMAIL=…)
+prod: ## Bring the stack up with TLS (make prod DOMAIN=… ACME_EMAIL=… [STAGING=1])
 	@$(MAKE) --no-print-directory prod-init
 	@echo "==> building images"
 	$(PROD) build
@@ -124,8 +133,8 @@ prod: ## Bring the whole stack up on a VPS with TLS (make prod DOMAIN=… ACME_E
 	@test -f data/cargo-auto.db || { echo "no catalogue to serve"; exit 1; }
 	@echo "==> starting API, nginx and certbot"
 	$(PROD) up -d api nginx certbot
-	@echo "==> certificate"
-	@$(MAKE) --no-print-directory prod-cert-issue
+	@echo "==> certificate from the $(if $(filter 1,$(STAGING)),STAGING,production) CA"
+	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="$(CERTBOT_FLAGS)"
 	@$(MAKE) --no-print-directory prod-verify
 
 prod-init: ## Checks and scaffolding that must pass before the stack starts
@@ -205,11 +214,17 @@ prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 			--agree-tos --no-eff-email --non-interactive $(CERTBOT_FLAGS) \
 		&& $(PROD) exec nginx nginx -s reload \
 		&& echo "  certificate installed and nginx reloaded" \
+		&& $(if $(findstring --staging,$(CERTBOT_FLAGS)),echo "  STAGING certificate: browsers will reject it; for a real one run" && echo "    make prod-cert-reset DOMAIN=$(DOMAIN) && make prod DOMAIN=$(DOMAIN) ACME_EMAIL=$(ACME_EMAIL)",true) \
 		|| echo "  issuance failed — see 'make prod-logs'; the placeholder certificate stays in place"; \
 	fi
 
-prod-cert-staging: ## Same, against the Let's Encrypt staging CA (no rate limits)
+prod-cert-staging: ## Request a staging certificate only (same as prod STAGING=1)
 	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="--staging"
+
+prod-cert-reset: ## Delete the certificate for DOMAIN (use after a staging rehearsal)
+	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
+	$(PROD) run --rm --entrypoint certbot certbot delete --cert-name $(DOMAIN) --non-interactive
+	@echo "  removed; nginx falls back to its placeholder until you re-issue"
 
 prod-cert: ## Show the certificate currently installed
 	@$(PROD) run --rm --entrypoint sh certbot -c \
