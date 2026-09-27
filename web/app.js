@@ -12,36 +12,86 @@ const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<
 const iconHeart='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 5.5c-2.4-2.4-6-1.5-8.5 1-2.5-2.5-6.1-3.4-8.5-1C.1 8.9 3.5 13.8 12 20c8.5-6.2 11.9-11.1 8.5-14.5Z"/></svg>';
 function eligible(){return cars.filter(c=>matches(c,criteria)&&(view!=='saved'||saved.has(c.id)));}
 function persistSaved(){try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}}
+function carTitle(c){
+ const name=String(c.name||'');
+ if(!/^Used /i.test(name)&&!name.includes('for Sale'))return name;
+ return [c.brand_name,c.model_name].filter(Boolean).join(' ')||name.replace(/^Used /i,'').split(/ for Sale| \d{4}/)[0];
+}
+function openSavedCar(id){
+ const car=cars.find(c=>c.id===id);if(!car)return;
+ const dialog=document.querySelector('#saved-car-dialog');
+ dialog.querySelector('.saved-car-content').innerHTML=cardMarkup(car);
+ paintCardPhoto(dialog.querySelector('.car'));
+ dialog.showModal();
+ dialog.focus({preventScroll:true});
+}
+function garageMarkup(list){return `<section class="garage-collection" aria-label="Сохранённые автомобили"><div class="garage-heading"><h1>Мой гараж</h1><span>${list.length} авто</span></div><div class="garage-grid">${list.map(c=>`<article class="garage-card"><button class="garage-open" data-car-open="${c.id}" aria-label="Открыть ${escapeHTML(carTitle(c))}"><div class="garage-photo"><img src="${escapeHTML(c.image)}" alt="${escapeHTML(carTitle(c))}" loading="lazy"><span>${c.year||'—'}</span></div><div class="garage-info"><h2>${escapeHTML(carTitle(c))}</h2><p>${escapeHTML(c.km||'—')} · ${escapeHTML(c.fuel||'—')}</p><strong>${money(c.price)}</strong><small>Стоимость в Китае*</small></div></button><button class="garage-remove" data-save="${c.id}" aria-label="Убрать ${escapeHTML(carTitle(c))} из гаража">${iconHeart}</button></article>`).join('')}</div></section>`;}
+function cardMarkup(c){return `<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button><span class="photo-label">${c.photo_count||1} фото · Смотреть</span></div><div class="car-body"><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${c.year||'—'} / КИТАЙ</span><h3>${escapeHTML(carTitle(c))}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div><div class="quick-specs"><span>${escapeHTML(c.fuel||'—')}</span><span>${c.km||'—'}</span><span>${c.power||'—'}</span><span>${c.drive||c.transmission||'—'}</span></div><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div></div></article>`;}
 function render(){
  const list=eligible();activeIndex=Math.max(0,Math.min(activeIndex,Math.max(0,list.length-1)));const c=list[activeIndex];
  document.querySelectorAll('[data-view]').forEach(x=>{const on=x.dataset.view===view;x.setAttribute('aria-pressed',String(on));x.classList.toggle('active',on)});
  document.querySelector('#saved-count').textContent=cars.filter(c=>saved.has(c.id)).length;
  document.body.classList.toggle('garage-view',view==='saved');
- feed.innerHTML=c?`<article class="car" data-id="${c.id}"><div class="visual" style="--car-image:url('${escapeHTML(c.image)}')"><img src="${c.image}" alt="${c.name}, внешний вид" draggable="false"><span class="swipe-stamp stamp-save">В сохранённые</span><span class="swipe-stamp stamp-skip">Дальше</span><button class="photo-zone photo-zone-left" data-photo-step="-1" aria-label="Предыдущее фото"></button><button class="photo-zone photo-zone-center" data-photo-open aria-label="Увеличить фотографию"></button><button class="photo-zone photo-zone-right" data-photo-step="1" aria-label="Следующее фото"></button><span class="photo-label">${c.photo_count||1} фото · Смотреть</span></div><div class="car-body"><div class="title-row"><div><span class="car-eyebrow">${escapeHTML(c.body_label||'АВТОМОБИЛЬ')} / ${c.year||'—'} / КИТАЙ</span><h3>${escapeHTML(c.name)}</h3><p class="sub">${escapeHTML(c.trim||'')}</p></div>${saved.has(c.id)?'<span class="saved-mark" aria-label="Сохранён">♥</span>':''}</div><div class="quick-specs"><span>${escapeHTML(c.fuel||'—')}</span><span>${c.km||'—'}</span><span>${c.power||'—'}</span><span>${c.drive||c.transmission||'—'}</span></div><div class="price-row"><div><div class="price-inline"><div class="price">${money(c.price)}</div><span class="price-origin">Стоимость в Китае*</span></div></div><button class="details-orb" data-detail="${c.id}" aria-label="Подробнее о ${c.name}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button></div></div></article>`:`<div class="empty"><span class="empty-heart">♡</span><h2>${view==='saved'?'Гараж начинается с симпатии':'Нет подходящих машин'}</h2><p>${view==='saved'?'Смахните вправо то, что зацепило. Мы сохраним ваши находки здесь.':'Попробуйте изменить параметры подбора.'}</p><button class="primary" id="reset">${view==='saved'?'К подбору':'Сбросить фильтры'}</button></div>`;
+ if(view==='saved'&&list.length){feed.innerHTML=garageMarkup(list);updateFilters();return;}
+ feed.innerHTML=c?cardMarkup(c):`<div class="empty"><span class="empty-heart">♡</span><h2>${view==='saved'?'Гараж начинается с симпатии':'Нет подходящих машин'}</h2><p>${view==='saved'?'Смахните вправо то, что зацепило. Мы сохраним ваши находки здесь.':'Попробуйте изменить параметры подбора.'}</p><button class="primary" id="reset">${view==='saved'?'К подбору':'Сбросить фильтры'}</button></div>`;
+ warmCatalogue(list,activeIndex);
  restoreCardPhoto();
  updateFilters();
 }
-async function decide(action){
- if(animating)return;
- const list=eligible(),c=list[activeIndex];if(!c)return;
- const currentView=view;
- const card=feed.querySelector('.car');
- const transform={like:'translateX(110%) rotate(12deg)',skip:'translateX(-110%) rotate(-12deg)',next:'translateY(-105%)',previous:'translateY(105%)'}[action];
- if(card&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
-  animating=true;
-  try{await card.animate([{transform:card.style.transform||'none',opacity:1},{transform,opacity:0}],{duration:210,easing:'ease-in'}).finished;}finally{animating=false;}
+const warmedImages=new Map();
+function warmImage(url){
+ if(!url||warmedImages.has(url))return;
+ const img=new Image();img.decoding='async';img.src=url;
+ warmedImages.set(url,img);img.decode().catch(()=>{});
+ // Keep a bounded window of decoded images, not the whole catalogue.
+ if(warmedImages.size>30)warmedImages.delete(warmedImages.keys().next().value);
+}
+function warmCatalogue(list,index){
+ for(const offset of [-1,0,1,2,3,4]){
+  const car=list[(index+offset+list.length)%list.length];if(!car)continue;
+  warmImage(car.image);
  }
- if(currentView!==view)return;
+}
+async function decide(action){
+ if(animating||view==='saved')return;
+ const list=eligible(),c=list[activeIndex];if(!c)return;
+ animating=true;
+ const card=feed.querySelector('.car');
+ const startTransform=card?.style.transform||'none';
+ const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
  if(action==='like'){
-  if(view==='saved'){saved.delete(c.id);}else{saved.add(c.id);}
+  if(view==='saved')saved.delete(c.id);else saved.add(c.id);
   persistSaved();
  }
  if(!(view==='saved'&&action==='like'))activeIndex=(activeIndex+(action==='previous'?-1:1)+list.length)%list.length;
  render();
+ if(!card||reduced){animating=false;return;}
+ // The next card is already underneath before the outgoing one moves away.
+ card.classList.add('departing');card.setAttribute('aria-hidden','true');card.inert=true;
+ card.classList.toggle('swiping-save',action==='like');card.classList.toggle('swiping-skip',action==='skip');
+ card.style.setProperty('--swipe-tint','1');feed.append(card);
+ const transform={like:'translateX(115%) rotate(8deg)',skip:'translateX(-115%) rotate(-8deg)',next:'translateY(-105%)',previous:'translateY(105%)'}[action];
+ const next=feed.querySelector('.car:not(.departing)');
+ const motions=[card.animate([{transform:startTransform,opacity:1},{transform,opacity:0}],{duration:390,easing:'cubic-bezier(.32,.05,.22,1)',fill:'forwards'})];
+ if(next)motions.push(next.animate([{transform:'scale(.975)',opacity:.6},{transform:'scale(1)',opacity:1}],{duration:440,easing:'cubic-bezier(.2,.75,.2,1)'}));
+ try{await Promise.allSettled(motions.map(a=>a.finished));}finally{card.remove();animating=false;}
+}
+function showUnderCard(direction=1){
+ const list=eligible();
+ if(list.length<2)return;
+ const next=list[(activeIndex+direction+list.length)%list.length];
+ const existing=feed.querySelector('.under-card');
+ if(existing?.dataset.id===next.id)return;
+ existing?.remove();
+ const template=document.createElement('template');template.innerHTML=cardMarkup(next);
+ const under=template.content.firstElementChild;
+ under.classList.add('under-card');under.inert=true;under.setAttribute('aria-hidden','true');
+ feed.append(under);
 }
 let drag=null;
 feed.addEventListener('pointerdown',e=>{
  if(animating||!e.isPrimary||e.button!==0||!e.target.closest('.car')||(e.target.closest('button')&&!e.target.closest('.photo-zone')))return;
+ showUnderCard();
  drag={x:e.clientX,y:e.clientY,id:e.pointerId,card:e.target.closest('.car'),dx:0,dy:0,axis:null};
 });
 feed.addEventListener('pointermove',e=>{
@@ -50,6 +100,9 @@ feed.addEventListener('pointermove',e=>{
  if(!drag.axis&&Math.max(Math.abs(dx),Math.abs(dy))>10){drag.axis=Math.abs(dx)>Math.abs(dy)?'x':'y';feed.setPointerCapture(e.pointerId);}
  drag.dx=dx;drag.dy=dy;
  if(!drag.axis)return;
+ showUnderCard(drag.axis==='y'&&dy>0?-1:1);
+ drag.card.style.setProperty('--swipe-tint',String(Math.min(1,Math.abs(dx)/130)));
+ drag.card.classList.add('is-dragging');
  drag.card.style.transform=drag.axis==='x'?`translateX(${dx*.65}px) rotate(${dx/35}deg)`:`translateY(${dy*.65}px)`;
  drag.card.classList.toggle('swiping-save',drag.axis==='x'&&dx>0);
  drag.card.classList.toggle('swiping-skip',drag.axis==='x'&&dx<0);
@@ -60,24 +113,24 @@ function endDrag(e,cancelled=false){
  if(Math.max(Math.abs(dx),Math.abs(dy))>10)suppressPhotoUntil=Date.now()+450;
  const distance=axis==='x'?dx:dy;
  if(!cancelled&&axis&&Math.abs(distance)>55){decide(axis==='x'?(dx>0?'like':'skip'):(dy<0?'next':'previous'));}
- else card.style.transform='';
- card.classList.remove('swiping-save','swiping-skip');
+ else {feed.querySelector('.under-card')?.remove();card.style.transform='';card.style.setProperty('--swipe-tint','0');card.classList.remove('swiping-save','swiping-skip');}
+ card.classList.remove('is-dragging');
 }
 feed.addEventListener('pointerup',e=>endDrag(e));
 feed.addEventListener('pointercancel',e=>endDrag(e,true));
 // Require a fresh wheel gesture after momentum stops, so trackpads don't skip several cars.
 let wheelTotal=0,wheelLocked=false,wheelTimer;
 feed.addEventListener('wheel',e=>{
- if(e.ctrlKey||document.querySelector('dialog[open]'))return;
+ if(view==='saved'||e.ctrlKey||document.querySelector('dialog[open]'))return;
  e.preventDefault();clearTimeout(wheelTimer);
  wheelTimer=setTimeout(()=>{wheelTotal=0;wheelLocked=false;},180);
  if(animating||wheelLocked)return;
  wheelTotal+=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?feed.clientHeight:1);
  if(Math.abs(wheelTotal)>45){wheelLocked=true;decide(wheelTotal>0?'next':'previous');}
 },{passive:false});
-document.addEventListener('click',e=>{const zone=e.target.closest('.photo-zone');if(zone&&Date.now()>suppressPhotoUntil&&!animating){const card=zone.closest('.car');if(zone.hasAttribute('data-photo-step'))stepCardPhoto(card,Number(zone.dataset.photoStep));else openGallery(card.dataset.id,cardPhotoIndices.get(card.dataset.id)||0);}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
+document.addEventListener('click',e=>{const opened=e.target.closest('[data-car-open]');if(opened)openSavedCar(opened.dataset.carOpen);const zone=e.target.closest('.photo-zone');if(zone&&Date.now()>suppressPhotoUntil&&!animating){const card=zone.closest('.car');if(zone.hasAttribute('data-photo-step'))stepCardPhoto(card,Number(zone.dataset.photoStep));else openGallery(card.dataset.id,cardPhotoIndices.get(card.dataset.id)||0);}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.scrollTop=y;feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
 if(f){filter=f.dataset.filter;document.querySelectorAll('.chip').forEach(x=>(x.classList.toggle('selected',x===f),x.setAttribute('aria-pressed',String(x===f))));render()}
-if(v&&!animating){view=v.dataset.view;activeIndex=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
+if(v&&!animating){view=v.dataset.view;activeIndex=0;feed.scrollTop=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
 if(d){openDetail(d.dataset.detail)}
 if(e.target.closest('.close'))e.target.closest('dialog').close();if(e.target.id==='reset'){filter='all';view='all';criteria={brand:'all',model:'all',budget:'all',fuel:'all',body:'all'};document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('selected',x.dataset.filter==='all'));document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view==='all'));render()}});
 document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||e.target.matches('input,select,textarea')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();decide({ArrowRight:'like',ArrowLeft:'skip',ArrowUp:'previous',ArrowDown:'next'}[e.key])});
@@ -165,7 +218,7 @@ async function openDetail(id){
       `<div class="cost-line"><span>${l}</span><b>${byLabel[l]}</b></div>`).join('');
     const rest=car.specs.filter(s=>!SPEC_ORDER.includes(s.label));
     box.innerHTML=`<span class="eyebrow">ЗНАКОМЬТЕСЬ БЛИЖЕ</span>
-      <h2 id="detail-title">${car.name}</h2>
+      <h2 id="detail-title">${escapeHTML(carTitle(car))}</h2>
       <p>${[car.trim,car.year&&car.year+' год',car.km,car.power,car.colour]
             .filter(Boolean).join(' · ')}</p>
       <div class="cost-line total"><span>Цена</span><span>${money(car.price??car.price_usd)}</span></div>

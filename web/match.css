@@ -64,3 +64,73 @@ body.match-app{--blue:#344b36;--blue-soft:#edf3e9;--accent:#d5f78a;--ink:#202923
 .match-app .quick-specs{gap:5px}
 .match-app .quick-specs span{padding:5px 8px}
 @media(max-width:360px){.match-app .quick-specs span{padding:4px 6px;font-size:9px}}
+
+/* Continuous card motion and directional feedback, without swipe labels. */
+.match-app .car{animation:none;transition:transform .38s cubic-bezier(.2,.75,.2,1)}
+.match-app .car.is-dragging{transition:none}
+.match-app .car.departing{position:absolute;inset:0;z-index:6;pointer-events:none;transition:none}
+.match-app .car:after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:7;opacity:0;transition:opacity .18s ease}
+.match-app .car.swiping-save:after{background:linear-gradient(90deg,transparent 25%,#429b6540 60%,#43ae738c);opacity:var(--swipe-tint,0)}
+.match-app .car.swiping-skip:after{background:linear-gradient(270deg,transparent 25%,#b74d4540 60%,#d4544d8c);opacity:var(--swipe-tint,0)}
+/* One continuous glass lens slides between destinations. */
+.match-app .glass-dock{position:relative;isolation:isolate;background:linear-gradient(125deg,#ffffff70,#ffffff20 45%,#ffffff50);border:1px solid #ffffffb0;box-shadow:inset 0 1px 0 #fff,inset 1px 0 1px #ffffff90,inset 0 -1px 1px #a8b7a440,0 10px 28px #23351f18;backdrop-filter:blur(26px) saturate(180%);-webkit-backdrop-filter:blur(26px) saturate(180%)}
+.match-app .glass-dock:before{content:'';position:absolute;inset:5px auto 5px 5px;width:calc(50% - 7px);border-radius:25px;background:linear-gradient(140deg,#ffffffb0,#dce9cc55 50%,#ffffff75);border:1px solid #ffffffc9;box-shadow:inset 0 1px 2px #fff,inset 0 -1px 3px #b0c0a540,0 3px 12px #24392213;backdrop-filter:blur(12px) saturate(160%);-webkit-backdrop-filter:blur(12px) saturate(160%);transition:transform .5s cubic-bezier(.22,.85,.23,1);z-index:0}
+.match-app.garage-view .glass-dock:before{transform:translateX(calc(100% + 4px))}
+.match-app .glass-dock .nav-item,.match-app .glass-dock .nav-item.active{z-index:1;background:transparent;box-shadow:none;transition:color .3s ease}
+.match-app .glass-dock .nav-item svg{transition:transform .4s cubic-bezier(.2,.8,.2,1)}
+.match-app .glass-dock .nav-item.active svg{transform:translateY(-1px) scale(1.06)}
+@media(prefers-reduced-motion:reduce){.match-app .glass-dock:before,.match-app .car:after{transition:none}}
+/* Give the vehicle the available screen, retaining safe-area clearance. */
+body.match-app{padding-left:max(6px,env(safe-area-inset-left));padding-right:max(6px,env(safe-area-inset-right));padding-top:max(3px,env(safe-area-inset-top))}
+.match-app .match-header{max-width:620px;height:44px;min-height:44px;padding:0 10px}
+.match-app .match-main{max-width:620px;max-height:none;padding-top:3px;padding-bottom:8px}
+.match-app .feed,.match-app .car{border-radius:24px}
+.match-app .glass-dock{min-height:58px;flex-basis:58px;margin-bottom:max(6px,env(safe-area-inset-bottom));padding:4px}
+.match-app .glass-dock .nav-item{height:48px}
+@media(min-width:761px){.match-app .match-main,.match-app .match-header{max-width:min(720px,calc(100dvh - 100px))}}
+@media(max-height:600px){.match-app .glass-dock{min-height:54px;flex-basis:54px}.match-app .glass-dock .nav-item{height:44px}}
+
+.match-app .feed>.car{position:relative;z-index:2}
+.match-app .feed>.car.under-card{position:absolute;inset:0;z-index:0;pointer-events:none;transform:scale(.985);filter:brightness(.92)}
+.match-app .feed>.car.departing{position:absolute;z-index:6}
+
+/* Saved cars are a browsable collection, independent of discovery gestures. */
+.match-app.garage-view .feed{overflow-y:auto;overflow-x:hidden;scroll-snap-type:none;box-shadow:none;border-radius:0;overscroll-behavior:contain;touch-action:pan-y}
+.garage-collection{padding:6px 4px 18px}.garage-heading{display:flex;align-items:baseline;justify-content:space-between;padding:8px 5px 18px}.garage-heading h1{margin:0;font-size:27px;letter-spacing:-1px;font-weight:650}.garage-heading>span{font-size:11px;color:#75826d}
+.garage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.garage-card{position:relative;min-width:0;overflow:hidden;border-radius:21px;background:#26362d;box-shadow:0 5px 15px #22332212;border:1px solid #ffffff80}
+.garage-open{display:block;width:100%;height:100%;border:0;padding:0;text-align:left;background:transparent;color:#f1f5e9}
+.garage-photo{position:relative;aspect-ratio:1/1.1;overflow:hidden;background:#dce1d7}.garage-photo img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s cubic-bezier(.2,.8,.2,1)}.garage-open:hover .garage-photo img{transform:scale(1.04)}
+.garage-photo:after{content:'';position:absolute;inset:50% 0 0;background:linear-gradient(transparent,#26362d)}.garage-photo>span{position:absolute;bottom:9px;left:12px;z-index:1;font-size:10px;color:#eef5e4}
+.garage-info{padding:3px 12px 15px}.garage-info h2{font-size:17px;letter-spacing:-.5px;line-height:1.2;margin:0 0 7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.garage-info p{font-size:10px;color:#c1cbbb;margin:0 0 12px;line-height:1.6}.garage-info strong{display:block;font-size:18px;letter-spacing:-.6px;color:#e3f7c9}.garage-info small{display:block;font-size:8px;color:#b8c6b1;margin-top:4px}
+.garage-remove{position:absolute;right:7px;top:7px;width:44px;height:44px;display:grid;place-items:center;border-radius:50%;border:1px solid #ffffff60;background:#20342b75;backdrop-filter:blur(16px);color:#d5f78a}.garage-remove svg{width:19px;height:19px;fill:currentColor;stroke:currentColor;stroke-width:1.4}
+@media(max-width:360px){.garage-grid{gap:8px}.garage-info{padding-left:10px;padding-right:10px}.garage-info h2{font-size:15px}.garage-info strong{font-size:16px}}
+@media(min-width:900px){.garage-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Discovery controls float inside the card instead of consuming a header row. */
+.match-app .match-main{position:relative;padding-top:0}
+.match-app .match-header{position:absolute;top:12px;left:14px;right:14px;width:auto;height:44px;min-height:44px;max-width:none;margin:0;padding:0;z-index:8;pointer-events:none}
+.match-app .match-header .logo,.match-app .match-header .filter-orb{pointer-events:auto}
+.match-app .match-header .logo{color:#fff;text-shadow:0 1px 10px #07190d66;font-size:23px;gap:6px}
+.match-app .match-header .logo>span:first-child{color:#e0ffc1;background:#19372845;border-color:#ffffff45;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.match-app .match-header .logo-dot{color:#fff}
+.match-app .match-header .filter-orb{width:44px;height:44px;color:#fff;background:linear-gradient(145deg,#ffffff35,#ffffff12);border-color:#ffffff75;box-shadow:inset 0 1px 1px #ffffff70,0 3px 16px #14261a16}
+.match-app .filter-orb svg circle{fill:#657568}
+.match-app .visual:after{background:linear-gradient(180deg,#11231950,transparent 24%,transparent 60%,#25302c)}
+.match-app.garage-view .match-header{position:relative;inset:auto;flex:0 0 48px;margin:0 10px;width:auto}
+.match-app.garage-view .match-header .logo,.match-app.garage-view .match-header .logo-dot{color:#263b2d;text-shadow:none}
+.match-app.garage-view .match-header .logo>span:first-child{color:#344b36;background:#ffffff65;border-color:#344b3626}
+.match-app.garage-view .match-header .filter-orb{color:#344b36;background:#ffffff80}
+
+.match-app #saved-car-dialog{width:min(620px,calc(100vw - 12px));max-width:none;height:calc(100dvh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom));max-height:none;padding:0;border-radius:24px;background:#25302c;overflow:hidden}
+.saved-car-content{height:100%;width:100%}
+.match-app #saved-car-dialog .car{height:100%;margin:0}
+.match-app #saved-car-dialog .saved-car-close{position:absolute;top:12px;right:12px;z-index:9;float:none;width:44px;height:44px;color:white;background:#213b2b60;border:1px solid #ffffff70;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+
+/* Reset bottom-sheet defaults for the full saved-car viewer. */
+.match-app #saved-car-dialog{position:fixed;inset:0;margin:auto;outline:none;border:0;box-shadow:0 18px 80px #0004}
+.match-app #saved-car-dialog:before{display:none;content:none}
+.match-app #saved-car-dialog .saved-car-content{height:100%;min-height:0;overflow:hidden}
+.match-app #saved-car-dialog .car{border:0;border-radius:inherit;box-shadow:none;min-height:0}
+.match-app #saved-car-dialog .saved-car-content{border-radius:inherit}
+.match-app #saved-car-dialog .visual{min-height:0}
