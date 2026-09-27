@@ -66,4 +66,45 @@ class CertificateTests(unittest.TestCase):
         self.assertFalse(self.live.exists())
         self.assertEqual(len(list((self.root/'le/legacy-backups').glob('*/live/fullchain.pem'))),1)
 
+    def test_broken_renewal_and_placeholder_quarantined_together(self):
+        self.openssl('req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256',
+                     '-nodes','-keyout',str(self.live/'privkey.pem'),'-out',str(self.live/'fullchain.pem'),
+                     '-days','3','-subj','/CN=cars.example.com')
+        renewal=self.root/'le/renewal/cars.example.com.conf'
+        renewal.parent.mkdir()
+        renewal.write_text('version = 4.0.0\n[renewalparams]\naccount = retained\n')
+        archive=self.root/'le/archive/cars.example.com'
+        archive.mkdir(parents=True)
+        (archive/'old.pem').write_text('old file')
+        other=renewal.parent/'other.example.com.conf'
+        other.write_text('unchanged')
+        r=self.helper('prepare')
+        self.assertEqual(r.returncode,0,r.stderr)
+        backups=list((self.root/'le/legacy-backups').iterdir())
+        self.assertEqual(len(backups),1)
+        self.assertTrue((backups[0]/'renewal.conf').exists())
+        self.assertTrue((backups[0]/'archive/old.pem').exists())
+        self.assertTrue((backups[0]/'live/fullchain.pem').exists())
+        self.assertFalse(renewal.exists())
+        self.assertEqual(other.read_text(),'unchanged')
+        self.assertEqual(self.helper('prepare').returncode,0)
+
+    def test_broken_renewal_does_not_move_ca_certificate(self):
+        renewal=self.root/'le/renewal/cars.example.com.conf'
+        renewal.parent.mkdir()
+        renewal.write_text('[renewalparams]\n')
+        self.assertEqual(self.helper('prepare').returncode,0)
+        self.assertTrue(renewal.exists())
+        self.assertTrue((self.live/'fullchain.pem').exists())
+
+    def test_missing_certificate_broken_renewal_recovered(self):
+        import shutil
+        shutil.rmtree(self.live)
+        renewal=self.root/'le/renewal/cars.example.com.conf'
+        renewal.parent.mkdir()
+        renewal.write_text('[renewalparams]\n')
+        self.assertEqual(self.helper('prepare').returncode,0)
+        self.assertFalse(renewal.exists())
+        self.assertEqual(len(list((self.root/'le/legacy-backups').glob('*/renewal.conf'))),1)
+
 if __name__ == '__main__': unittest.main()

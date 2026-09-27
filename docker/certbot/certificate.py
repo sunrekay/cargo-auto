@@ -45,14 +45,38 @@ def validate():
                 '-untrusted', LIVE/'chain.pem', cert)
 
 def prepare():
-    if state() != 'selfsigned':
+    kind = state()
+    # Only legacy placeholders or missing certificates may be quarantined.
+    # A damaged renewal file must never make us move a CA-issued certificate.
+    if kind not in ('selfsigned', 'missing'):
         return
-    if (LE/'renewal'/f'{DOMAIN}.conf').exists() or (LIVE/'fullchain.pem').is_symlink():
-        raise ValueError('Self-signed managed lineage: inspect it and use make prod-cert-reset explicitly')
+    renewal = LE/'renewal'/f'{DOMAIN}.conf'
+    archive = LE/'archive'/DOMAIN
+    if renewal.exists():
+        # Certbot's required file references are top-level, before [renewalparams].
+        top = renewal.read_text().split('[', 1)[0]
+        refs = dict(re.findall(r'^\s*(cert|privkey|chain|fullchain|archive_dir)\s*=\s*([^\n#]+)', top, re.M))
+        required = {'cert', 'privkey', 'chain', 'fullchain', 'archive_dir'}
+        if required <= refs.keys() and all(refs[k].strip() for k in required):
+            raise ValueError('Managed lineage has complete references; inspect it before explicit reset')
+    elif (LIVE/'fullchain.pem').is_symlink():
+        raise ValueError('Symlinked lineage without renewal configuration requires explicit inspection')
+    paths = [(LIVE, 'live'), (archive, 'archive'), (renewal, 'renewal.conf')]
+    paths = [(src, name) for src, name in paths if src.exists() or src.is_symlink()]
+    if not paths:
+        return
     backup = LE/'legacy-backups'/f'{DOMAIN}-{time.time_ns()}'
     backup.mkdir(parents=True, mode=0o700)
-    shutil.move(str(LIVE), str(backup/'live'))
-    print(f'Legacy placeholder preserved in {backup}')
+    moved = []
+    try:
+        for src, name in paths:
+            shutil.move(str(src), str(backup/name))
+            moved.append((src, backup/name))
+    except OSError:
+        for src, dst in reversed(moved):
+            shutil.move(str(dst), str(src))
+        raise
+    print(f'Legacy certificate state preserved in {backup}; ready for fresh issuance')
 
 def publish():
     validate()

@@ -140,6 +140,9 @@ Older deployments may have a self-signed placeholder in
 `/etc/letsencrypt/live/<domain>`. `make prod-cert-issue` detects this by matching
 issuer and subject. Unmanaged placeholders are moved to
 `/etc/letsencrypt/legacy-backups/` before issuance, preserving the keys and
-certificate. Managed lineages and symlinks require explicit inspection/reset.
+certificate. If a self-signed or missing certificate also has a malformed renewal file
+(missing required file references), its live directory, archive and renewal file
+are moved together into the backup. Other domains and CA-issued certificates are
+not moved. Complete managed lineages require explicit inspection/reset.
 After issuance, the script confirms that the mounted certificate was replaced
 before starting nginx. Then run `make prod-verify`.
