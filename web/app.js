@@ -7,7 +7,7 @@ let filter='all',view='all';let criteria={brand:'all',model:'all',budget:'all',f
   ?new Intl.NumberFormat('ru-RU').format(n)+' ₽'
   :'$'+new Intl.NumberFormat('en-US').format(n));
 function notify(t){const el=document.querySelector('#toast');el.textContent=t;el.classList.add('show');clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>el.classList.remove('show'),2200)}
-let activeIndex=0,suppressPhotoUntil=0,animating=false;
+let activeIndex=0,suppressPhotoUntil=0;
 const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const iconHeart='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 5.5c-2.4-2.4-6-1.5-8.5 1-2.5-2.5-6.1-3.4-8.5-1C.1 8.9 3.5 13.8 12 20c8.5-6.2 11.9-11.1 8.5-14.5Z"/></svg>';
 function eligible(){return cars.filter(c=>matches(c,criteria)&&(view!=='saved'||saved.has(c.id)));}
@@ -52,29 +52,39 @@ function warmCatalogue(list,index){
   warmImage(car.image);
  }
 }
-async function decide(action){
- if(animating||view==='saved')return;
+// The card leaving the stack is decoration: saved, activeIndex and render()
+// have all committed before it starts moving, and nothing awaits it. It owns
+// its own lifetime, which is why no input path consults animation state — a
+// gesture can never be swallowed by an animation still in progress.
+let departing=null;
+function flyOut(card,action,from){
+ departing?.remove();                       // at most one card in flight
+ departing=card;
+ card.classList.add('departing');card.setAttribute('aria-hidden','true');card.inert=true;
+ card.classList.toggle('swiping-save',action==='like');card.classList.toggle('swiping-skip',action==='skip');
+ card.style.setProperty('--swipe-tint','1');feed.append(card);
+ const to={like:'translateX(115%) rotate(8deg)',skip:'translateX(-115%) rotate(-8deg)',next:'translateY(-105%)',previous:'translateY(105%)'}[action];
+ const out=card.animate([{transform:from,opacity:1},{transform:to,opacity:0}],
+  {duration:390,easing:'cubic-bezier(.32,.05,.22,1)',fill:'forwards'});
+ // The next card is already underneath before the outgoing one moves away.
+ feed.querySelector('.car:not(.departing)')?.animate(
+  [{transform:'scale(.975)',opacity:.6},{transform:'scale(1)',opacity:1}],
+  {duration:440,easing:'cubic-bezier(.2,.75,.2,1)'});
+ out.finished.catch(()=>{}).then(()=>{if(departing===card){card.remove();departing=null;}});
+}
+function decide(action){
+ if(view==='saved')return;
  const list=eligible(),c=list[activeIndex];if(!c)return;
- animating=true;
- const card=feed.querySelector('.car');
- const startTransform=card?.style.transform||'none';
- const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const card=feed.querySelector('.car:not(.departing)');
+ const from=card?.style.transform||'none';
  if(action==='like'){
   if(view==='saved')saved.delete(c.id);else saved.add(c.id);
   persistSaved();
  }
  if(!(view==='saved'&&action==='like'))activeIndex=(activeIndex+(action==='previous'?-1:1)+list.length)%list.length;
  render();
- if(!card||reduced){animating=false;return;}
- // The next card is already underneath before the outgoing one moves away.
- card.classList.add('departing');card.setAttribute('aria-hidden','true');card.inert=true;
- card.classList.toggle('swiping-save',action==='like');card.classList.toggle('swiping-skip',action==='skip');
- card.style.setProperty('--swipe-tint','1');feed.append(card);
- const transform={like:'translateX(115%) rotate(8deg)',skip:'translateX(-115%) rotate(-8deg)',next:'translateY(-105%)',previous:'translateY(105%)'}[action];
- const next=feed.querySelector('.car:not(.departing)');
- const motions=[card.animate([{transform:startTransform,opacity:1},{transform,opacity:0}],{duration:390,easing:'cubic-bezier(.32,.05,.22,1)',fill:'forwards'})];
- if(next)motions.push(next.animate([{transform:'scale(.975)',opacity:.6},{transform:'scale(1)',opacity:1}],{duration:440,easing:'cubic-bezier(.2,.75,.2,1)'}));
- try{await Promise.allSettled(motions.map(a=>a.finished));}finally{card.remove();animating=false;}
+ if(!card||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+ flyOut(card,action,from);
 }
 function showUnderCard(direction=1){
  const list=eligible();
@@ -90,7 +100,7 @@ function showUnderCard(direction=1){
 }
 let drag=null;
 feed.addEventListener('pointerdown',e=>{
- if(animating||!e.isPrimary||e.button!==0||!e.target.closest('.car')||(e.target.closest('button')&&!e.target.closest('.photo-zone')))return;
+ if(!e.isPrimary||e.button!==0||!e.target.closest('.car')||(e.target.closest('button')&&!e.target.closest('.photo-zone')))return;
  showUnderCard();
  drag={x:e.clientX,y:e.clientY,id:e.pointerId,card:e.target.closest('.car'),dx:0,dy:0,axis:null};
 });
@@ -124,16 +134,16 @@ feed.addEventListener('wheel',e=>{
  if(view==='saved'||e.ctrlKey||document.querySelector('dialog[open]'))return;
  e.preventDefault();clearTimeout(wheelTimer);
  wheelTimer=setTimeout(()=>{wheelTotal=0;wheelLocked=false;},180);
- if(animating||wheelLocked)return;
+ if(wheelLocked)return;
  wheelTotal+=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?feed.clientHeight:1);
  if(Math.abs(wheelTotal)>45){wheelLocked=true;decide(wheelTotal>0?'next':'previous');}
 },{passive:false});
-document.addEventListener('click',e=>{const opened=e.target.closest('[data-car-open]');if(opened)openSavedCar(opened.dataset.carOpen);const zone=e.target.closest('.photo-zone');if(zone&&Date.now()>suppressPhotoUntil&&!animating){const card=zone.closest('.car');if(zone.hasAttribute('data-photo-step'))stepCardPhoto(card,Number(zone.dataset.photoStep));else openGallery(card.dataset.id,cardPhotoIndices.get(card.dataset.id)||0);}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.scrollTop=y;feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
+document.addEventListener('click',e=>{const opened=e.target.closest('[data-car-open]');if(opened)openSavedCar(opened.dataset.carOpen);const zone=e.target.closest('.photo-zone');if(zone&&Date.now()>suppressPhotoUntil){const card=zone.closest('.car');if(zone.hasAttribute('data-photo-step'))stepCardPhoto(card,Number(zone.dataset.photoStep));else openGallery(card.dataset.id,cardPhotoIndices.get(card.dataset.id)||0);}const s=e.target.closest('[data-save]'),d=e.target.closest('[data-detail]'),f=e.target.closest('[data-filter]'),v=e.target.closest('[data-view]');if(s){const id=s.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);try{localStorage.setItem('potok-saved',JSON.stringify([...saved]))}catch{}const y=feed.scrollTop;render();feed.scrollTop=y;feed.querySelector(`[data-save="${id}"]`)?.focus({preventScroll:true});notify(saved.has(id)?'Автомобиль в избранном':'Автомобиль удалён из избранного')}
 if(f){filter=f.dataset.filter;document.querySelectorAll('.chip').forEach(x=>(x.classList.toggle('selected',x===f),x.setAttribute('aria-pressed',String(x===f))));render()}
-if(v&&!animating){view=v.dataset.view;activeIndex=0;feed.scrollTop=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
+if(v){view=v.dataset.view;activeIndex=0;feed.scrollTop=0;document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x===v));render()}
 if(d){openDetail(d.dataset.detail)}
 if(e.target.closest('.close'))e.target.closest('dialog').close();if(e.target.id==='reset'){filter='all';view='all';criteria={brand:'all',model:'all',budget:'all',fuel:'all',body:'all'};document.querySelectorAll('.chip').forEach(x=>x.classList.toggle('selected',x.dataset.filter==='all'));document.querySelectorAll('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view==='all'));render()}});
-document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||e.target.matches('input,select,textarea')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();decide({ArrowRight:'like',ArrowLeft:'skip',ArrowUp:'previous',ArrowDown:'next'}[e.key])});
+document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]')||e.target?.matches?.('input,select,textarea')||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key))return;e.preventDefault();decide({ArrowRight:'like',ArrowLeft:'skip',ArrowUp:'previous',ArrowDown:'next'}[e.key])});
 const filterDialog=document.querySelector('#filters-dialog'),form=document.querySelector('#filter-form');
 function draft(){return {...criteria,...Object.fromEntries(new FormData(form))}}
 function updateFilters(){const count=Object.values(criteria).filter(v=>v!=='all').length;const badge=document.querySelector('#filter-count');badge.hidden=!count;badge.textContent=count;document.querySelector('#clear-filters').hidden=!count;document.querySelector('#brand-trigger').innerHTML=(criteria.brand==='all'?'Марка':(brandNames[criteria.brand]||criteria.brand))+' <span>⌄</span>';document.querySelector('#model-trigger').innerHTML=(criteria.model==='all'?'Модель':(modelNames[criteria.model]||criteria.model))+' <span>⌄</span>';}
