@@ -1,20 +1,20 @@
 #!/bin/sh
-# nginx refuses to start when ssl_certificate points at a missing file, and
-# certbot cannot obtain a certificate until nginx is answering on port 80.
-# A self-signed placeholder breaks that circle; certbot overwrites it.
+# Generate the self-signed placeholder the rendered config falls back to.
+# Kept outside /etc/letsencrypt so certbot does not mistake it for one of its
+# own lineages and issue into "<domain>-0001" instead.
 set -e
 : "${DOMAIN:?DOMAIN is not set}"
-DIR="/etc/letsencrypt/live/${DOMAIN}"
 
-if [ -s "${DIR}/fullchain.pem" ] && [ -s "${DIR}/privkey.pem" ]; then
-    echo "[nginx] certificate present for ${DOMAIN}"
-    exit 0
+if [ -s "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+    exit 0                      # a real certificate is in use
 fi
 
-echo "[nginx] no certificate yet — generating a self-signed placeholder"
+DIR="/etc/nginx/ssl/${DOMAIN}"
+[ -s "${DIR}/fullchain.pem" ] && exit 0
+
 mkdir -p "${DIR}"
 openssl req -x509 -nodes -newkey rsa:2048 -days 3 \
     -keyout "${DIR}/privkey.pem" \
     -out "${DIR}/fullchain.pem" \
     -subj "/CN=${DOMAIN}" >/dev/null 2>&1
-echo "[nginx] placeholder in place; run 'make prod-cert-issue' for a real one"
+echo "[nginx] placeholder certificate generated; run 'make prod-cert-issue' for a real one"

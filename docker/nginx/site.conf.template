@@ -24,18 +24,19 @@ server {
     http2 on;
     server_name ${DOMAIN};
 
-    # Replaced by the real certificate once certbot has issued one. Until then
-    # this is a self-signed placeholder so nginx can start at all — without a
-    # listener on 80/443 the ACME challenge could never be answered.
-    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    # Points at certbot's certificate once one exists, and at a self-signed
+    # placeholder before that — nginx will not start without a readable
+    # certificate, and without nginx on port 80 the ACME challenge that
+    # produces the real one can never be answered.
+    ssl_certificate     ${CERT_DIR}/fullchain.pem;
+    ssl_certificate_key ${CERT_DIR}/privkey.pem;
 
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
-    ssl_stapling on;
-    ssl_stapling_verify on;
+    ssl_stapling ${STAPLING};
+    ssl_stapling_verify ${STAPLING};
 
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options "nosniff" always;

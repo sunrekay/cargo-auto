@@ -216,8 +216,8 @@ prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 			--webroot -w /var/www/certbot \
 			-d $(DOMAIN) --email $(ACME_EMAIL) \
 			--agree-tos --no-eff-email --non-interactive $(CERTBOT_FLAGS) \
-		&& $(PROD) exec nginx nginx -s reload \
-		&& echo "  certificate installed and nginx reloaded" \
+		&& $(PROD) restart nginx \
+		&& echo "  certificate installed and nginx restarted onto it" \
 		&& $(if $(findstring --staging,$(CERTBOT_FLAGS)),echo "  STAGING certificate: browsers will reject it; for a real one run" && echo "    make prod-cert-reset DOMAIN=$(DOMAIN) && make prod DOMAIN=$(DOMAIN) ACME_EMAIL=$(ACME_EMAIL)",true) \
 		|| echo "  issuance failed — see 'make prod-logs'; the placeholder certificate stays in place"; \
 	fi
@@ -225,10 +225,12 @@ prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 prod-cert-staging: ## Request a staging certificate only (same as prod STAGING=1)
 	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="--staging"
 
-prod-cert-reset: ## Delete the certificate for DOMAIN (use after a staging rehearsal)
+prod-cert-reset: ## Delete every certificate for DOMAIN (after a staging rehearsal)
 	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
-	$(PROD) run --rm --entrypoint certbot certbot delete --cert-name $(DOMAIN) --non-interactive
-	@echo "  removed; nginx falls back to its placeholder until you re-issue"
+	@$(PROD) run --rm -v ./scripts:/scripts:ro --entrypoint sh certbot \
+		/scripts/cert-reset.sh $(DOMAIN)
+	@$(PROD) restart nginx >/dev/null 2>&1 || true
+	@echo "  nginx is back on its placeholder until you issue again"
 
 prod-cert: ## Show the certificate currently installed
 	@$(PROD) run --rm --entrypoint sh certbot -c \
