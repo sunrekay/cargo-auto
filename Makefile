@@ -33,7 +33,7 @@ export
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help env check build up down login prod prod-init prod-dns prod-verify prod-cert-issue prod-cert-staging prod-cert-reset prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
+.PHONY: help env check build up down login prod prod-init prod-ports prod-dns prod-verify prod-cert-issue prod-cert-staging prod-cert-reset prod-logs prod-down prod-restart prod-cert run recon shell vnc psql load-db backfill sqlite upload-s3 s3-status sql logs clean clean-data clean-profile clean-db stats csv
 
 help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -132,7 +132,7 @@ prod: ## Bring the stack up with TLS (make prod DOMAIN=… ACME_EMAIL=… [STAGI
 	@echo "==> catalogue: $(shell test -f data/cargo-auto.db && echo 'data/cargo-auto.db' || echo 'MISSING — run make sqlite')"
 	@test -f data/cargo-auto.db || { echo "no catalogue to serve"; exit 1; }
 	@echo "==> starting API, nginx and certbot"
-	$(PROD) up -d api nginx certbot
+	$(PROD) up -d --remove-orphans
 	@echo "==> certificate from the $(if $(filter 1,$(STAGING)),STAGING,production) CA"
 	@$(MAKE) --no-print-directory prod-cert-issue CERTBOT_FLAGS="$(CERTBOT_FLAGS)"
 	@$(MAKE) --no-print-directory prod-verify
@@ -164,7 +164,27 @@ prod-init: ## Checks and scaffolding that must pass before the stack starts
 	@test -d web || { echo "storefront missing: web/ is not present"; exit 1; }
 	@mkdir -p data/images
 	@echo "==> checks passed: domain $(DOMAIN), storefront present, .env complete"
+	@$(MAKE) --no-print-directory prod-ports
 	@$(MAKE) --no-print-directory prod-dns
+
+prod-ports: ## Report anything already holding 80 or 443
+	@for p in 80 443; do \
+		who=""; \
+		if command -v ss >/dev/null 2>&1; then \
+			who=$$(ss -lptnH "sport = :$$p" 2>/dev/null | head -1); \
+		elif command -v lsof >/dev/null 2>&1; then \
+			who=$$(lsof -nP -iTCP:$$p -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $$1}'); \
+		fi; \
+		if [ -z "$$who" ]; then \
+			echo "  port $$p: free"; \
+		elif echo "$$who" | grep -qiE "docker|com.docke"; then \
+			echo "  port $$p: held by docker (compose will take it over)"; \
+		else \
+			echo "  warning: port $$p is held outside docker:"; \
+			echo "           $$who"; \
+			echo "           stop that service, or nginx cannot bind"; \
+		fi; \
+	done
 
 prod-dns: ## Warn when the domain does not resolve to this host
 	@ip=$$(curl -s --max-time 5 https://api.ipify.org || true); \
@@ -198,7 +218,7 @@ prod-down: ## Stop the production stack (data and certificates are kept)
 	$(PROD) down
 
 prod-restart: ## Rebuild and restart API and proxy, leaving the data alone
-	$(PROD) build api nginx && $(PROD) up -d api nginx certbot
+	$(PROD) build api nginx && $(PROD) up -d --remove-orphans
 
 prod-cert-issue: ## Obtain (or renew) the Let's Encrypt certificate for DOMAIN
 	@test -n "$(DOMAIN)" || { echo "DOMAIN is not set"; exit 1; }
