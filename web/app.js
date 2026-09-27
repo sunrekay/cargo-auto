@@ -37,6 +37,7 @@ function render(){
  warmCatalogue(list,activeIndex);
  restoreCardPhoto();
  updateFilters();
+ requestAnimationFrame(seatDescription);
 }
 const warmedImages=new Map();
 function warmImage(url){
@@ -105,7 +106,24 @@ feed.addEventListener('load',e=>{
  const img=e.target;
  if(img.tagName==='IMG'&&img.naturalWidth&&img.naturalHeight)
   img.style.aspectRatio=`${img.naturalWidth}/${img.naturalHeight}`;
+ requestAnimationFrame(seatDescription);
 },true);
+// Seat the description just under the photo. The picture is 4:3 in a portrait
+// card, so the leftover height shows up as a blurred gap between them; this
+// measures that gap and lifts the block into it, leaving the surplus at the
+// foot of the card where it reads as padding rather than a hole.
+const DESCRIPTION_GAP=22;
+function seatDescription(){
+ const card=feed.querySelector('.car:not(.departing)');
+ if(!card)return;
+ const img=card.querySelector('.visual img'),body=card.querySelector('.car-body');
+ if(!img||!body)return;
+ body.style.setProperty('--body-lift','0px');
+ const gap=body.getBoundingClientRect().top-img.getBoundingClientRect().bottom;
+ const lift=Math.max(0,Math.round(gap-DESCRIPTION_GAP));
+ body.style.setProperty('--body-lift',lift+'px');
+}
+addEventListener('resize',seatDescription);
 let drag=null;
 feed.addEventListener('pointerdown',e=>{
  if(!e.isPrimary||e.button!==0||!e.target.closest('.car')||(e.target.closest('button')&&!e.target.closest('.photo-zone')))return;
